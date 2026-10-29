@@ -1,0 +1,18 @@
+{
+  "id": "10-dependencia-necessaria",
+  "title": "Transferência de artefato bloqueia sugestão de remover dependência",
+  "plan_rule": "R05",
+  "expected": {
+    "change_rules": [],
+    "after_rules": [],
+    "absent_warning_rules": [
+      "R02_ARTIFACT_ORDER",
+      "R03_ARTIFACT_CONDITION",
+      "R05_PARALLEL_REVIEW"
+    ],
+    "unordered_pairs": []
+  },
+  "origin": "synthetic",
+  "split": "development",
+  "github_execution_verified": false
+}

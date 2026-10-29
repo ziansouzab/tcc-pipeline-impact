@@ -1,0 +1,223 @@
+[
+  {
+    "id": "01-dependencia-adicionada",
+    "title": "Dependência nova afeta ordem, sem provar defeito",
+    "plan_rule": "R01",
+    "expected": {
+      "change_rules": [
+        "R01_DEPENDENCY_CHANGE",
+        "R01_REACHABILITY_CHANGE"
+      ],
+      "after_rules": [],
+      "absent_warning_rules": [],
+      "unordered_pairs": null
+    },
+    "origin": "synthetic",
+    "split": "development",
+    "github_execution_verified": false
+  },
+  {
+    "id": "02-ordem-da-lista",
+    "title": "Reordenar a lista de needs não muda precedência",
+    "plan_rule": "R01",
+    "expected": {
+      "change_rules": [],
+      "after_rules": [],
+      "absent_warning_rules": [
+        "R02_ARTIFACT_ORDER",
+        "R03_ARTIFACT_CONDITION"
+      ],
+      "unordered_pairs": null
+    },
+    "origin": "synthetic",
+    "split": "development",
+    "github_execution_verified": false
+  },
+  {
+    "id": "03-artefato-sem-ordem",
+    "title": "Remoção de needs perde a garantia de ordem do artefato",
+    "plan_rule": "R02",
+    "expected": {
+      "change_rules": [
+        "R01_DEPENDENCY_CHANGE"
+      ],
+      "after_rules": [
+        "R02_ARTIFACT_ORDER"
+      ],
+      "absent_warning_rules": [],
+      "unordered_pairs": null
+    },
+    "origin": "synthetic",
+    "split": "development",
+    "github_execution_verified": false
+  },
+  {
+    "id": "04-precedencia-transitiva",
+    "title": "Remover aresta redundante preserva entrega e ordem transitiva",
+    "plan_rule": "R02",
+    "expected": {
+      "change_rules": [
+        "R01_DEPENDENCY_CHANGE"
+      ],
+      "after_rules": [],
+      "absent_warning_rules": [
+        "R02_ARTIFACT_ORDER",
+        "R03_ARTIFACT_CONDITION"
+      ],
+      "unordered_pairs": null
+    },
+    "origin": "synthetic",
+    "split": "development",
+    "github_execution_verified": false
+  },
+  {
+    "id": "05-upload-condicional",
+    "title": "Upload só na main, download continua ativo em outros contextos",
+    "plan_rule": "R03",
+    "expected": {
+      "change_rules": [
+        "STEP_CHANGE"
+      ],
+      "after_rules": [
+        "R03_ARTIFACT_CONDITION"
+      ],
+      "absent_warning_rules": [],
+      "unordered_pairs": null
+    },
+    "origin": "synthetic",
+    "split": "development",
+    "github_execution_verified": false
+  },
+  {
+    "id": "06-consumo-protegido",
+    "title": "Condição compatível impede download quando upload é pulado",
+    "plan_rule": "R03",
+    "expected": {
+      "change_rules": [
+        "R04_CONDITION_CHANGE"
+      ],
+      "after_rules": [],
+      "absent_warning_rules": [
+        "R02_ARTIFACT_ORDER",
+        "R03_ARTIFACT_CONDITION"
+      ],
+      "unordered_pairs": null
+    },
+    "origin": "synthetic",
+    "split": "development",
+    "github_execution_verified": false
+  },
+  {
+    "id": "07-condicao-alterada",
+    "title": "Always em notificação é impacto a revisar, não defeito comprovado",
+    "plan_rule": "R04",
+    "expected": {
+      "change_rules": [
+        "R04_CONDITION_CHANGE"
+      ],
+      "after_rules": [],
+      "absent_warning_rules": [
+        "R02_ARTIFACT_ORDER",
+        "R03_ARTIFACT_CONDITION"
+      ],
+      "unordered_pairs": null
+    },
+    "origin": "synthetic",
+    "split": "development",
+    "github_execution_verified": false
+  },
+  {
+    "id": "08-politica-preservada",
+    "title": "Sem mudança de política de falha",
+    "plan_rule": "R04",
+    "expected": {
+      "change_rules": [],
+      "after_rules": [],
+      "absent_warning_rules": [
+        "R02_ARTIFACT_ORDER",
+        "R03_ARTIFACT_CONDITION"
+      ],
+      "unordered_pairs": null
+    },
+    "origin": "synthetic",
+    "split": "development",
+    "github_execution_verified": false
+  },
+  {
+    "id": "09-revisar-paralelismo",
+    "title": "Serialização sem relação de dados reconhecida: revisão condicional",
+    "plan_rule": "R05",
+    "expected": {
+      "change_rules": [
+        "R01_DEPENDENCY_CHANGE"
+      ],
+      "after_rules": [
+        "R05_PARALLEL_REVIEW"
+      ],
+      "absent_warning_rules": [],
+      "unordered_pairs": []
+    },
+    "origin": "synthetic",
+    "split": "development",
+    "github_execution_verified": false
+  },
+  {
+    "id": "10-dependencia-necessaria",
+    "title": "Transferência de artefato bloqueia sugestão de remover dependência",
+    "plan_rule": "R05",
+    "expected": {
+      "change_rules": [],
+      "after_rules": [],
+      "absent_warning_rules": [
+        "R02_ARTIFACT_ORDER",
+        "R03_ARTIFACT_CONDITION",
+        "R05_PARALLEL_REVIEW"
+      ],
+      "unordered_pairs": []
+    },
+    "origin": "synthetic",
+    "split": "development",
+    "github_execution_verified": false
+  },
+  {
+    "id": "11-ja-sem-ordem",
+    "title": "Jobs sem needs já estão livres de ordem estrutural; sem economia estimada",
+    "plan_rule": "R06",
+    "expected": {
+      "change_rules": [],
+      "after_rules": [],
+      "absent_warning_rules": [
+        "R02_ARTIFACT_ORDER",
+        "R03_ARTIFACT_CONDITION",
+        "R05_PARALLEL_REVIEW"
+      ],
+      "unordered_pairs": [
+        [
+          "lint",
+          "verify"
+        ]
+      ]
+    },
+    "origin": "synthetic",
+    "split": "development",
+    "github_execution_verified": false
+  },
+  {
+    "id": "12-sequencia-preservada",
+    "title": "Ordem necessária não é paralelismo já existente",
+    "plan_rule": "R06",
+    "expected": {
+      "change_rules": [],
+      "after_rules": [],
+      "absent_warning_rules": [
+        "R02_ARTIFACT_ORDER",
+        "R03_ARTIFACT_CONDITION",
+        "R05_PARALLEL_REVIEW"
+      ],
+      "unordered_pairs": []
+    },
+    "origin": "synthetic",
+    "split": "development",
+    "github_execution_verified": false
+  }
+]

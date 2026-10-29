@@ -1,0 +1,17 @@
+{
+  "id": "01-dependencia-adicionada",
+  "title": "Dependência nova afeta ordem, sem provar defeito",
+  "plan_rule": "R01",
+  "expected": {
+    "change_rules": [
+      "R01_DEPENDENCY_CHANGE",
+      "R01_REACHABILITY_CHANGE"
+    ],
+    "after_rules": [],
+    "absent_warning_rules": [],
+    "unordered_pairs": null
+  },
+  "origin": "synthetic",
+  "split": "development",
+  "github_execution_verified": false
+}

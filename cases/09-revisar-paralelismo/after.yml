@@ -1,0 +1,16 @@
+name: Experimento de pipeline
+'on':
+- push
+- pull_request
+permissions:
+  contents: read
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+    - run: echo etapa experimental
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+    - run: echo etapa experimental
+    needs: lint

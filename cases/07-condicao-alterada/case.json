@@ -1,0 +1,19 @@
+{
+  "id": "07-condicao-alterada",
+  "title": "Always em notificação é impacto a revisar, não defeito comprovado",
+  "plan_rule": "R04",
+  "expected": {
+    "change_rules": [
+      "R04_CONDITION_CHANGE"
+    ],
+    "after_rules": [],
+    "absent_warning_rules": [
+      "R02_ARTIFACT_ORDER",
+      "R03_ARTIFACT_CONDITION"
+    ],
+    "unordered_pairs": null
+  },
+  "origin": "synthetic",
+  "split": "development",
+  "github_execution_verified": false
+}

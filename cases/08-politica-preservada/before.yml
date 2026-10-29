@@ -1,0 +1,12 @@
+name: Experimento de pipeline
+'on':
+- push
+- pull_request
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - run: echo etapa experimental
+    continue-on-error: false
