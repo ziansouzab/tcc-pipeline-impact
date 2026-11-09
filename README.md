@@ -4,7 +4,7 @@ Protótipo de análise de workflows do GitHub Actions.
 
 ## Etapa disponível
 
-Estrutura Python, dependência e convenções de escrita.
+Leitura do YAML, validação inicial e representação dos jobs.
 
 ## Preparação local
 
