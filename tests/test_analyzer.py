@@ -42,6 +42,81 @@ class AnalysisTests(unittest.TestCase):
         self.assertEqual(["b"], target_change["after"])
 
 
+    def test_corrected_workflow_has_warning_only_in_before_snapshot(self):
+        broken = workflow({
+            "build": simple(steps=[artifact()]),
+            "verify": simple(steps=[artifact(False)]),
+        })
+        fixed = workflow({
+            "build": simple(steps=[artifact()]),
+            "verify": simple("build", steps=[artifact(False)]),
+        })
+        fixed_report = compare(broken, fixed)
+        before_rules = collect_rules(fixed_report["before"]["findings"])
+        after_rules = collect_rules(fixed_report["after"]["findings"])
+        self.assertIn("R02_ARTIFACT_ORDER", before_rules)
+        self.assertNotIn("R02_ARTIFACT_ORDER", after_rules)
+        self.assertNotIn("resolved_findings", fixed_report)
+
+
+    def test_same_workflow_keeps_warnings_in_both_snapshots(self):
+        broken = workflow({
+            "build": simple(steps=[artifact()]),
+            "verify": simple(steps=[artifact(False)]),
+        })
+        report = compare(broken, broken)
+        before_rules = collect_rules(report["before"]["findings"])
+        after_rules = collect_rules(report["after"]["findings"])
+        self.assertIn("R02_ARTIFACT_ORDER", before_rules)
+        self.assertIn("R02_ARTIFACT_ORDER", after_rules)
+        self.assertEqual([], report["changes"])
+
+
+    def test_inserted_step_preserves_diagnostics_without_claiming_lifecycle(self):
+        before_workflow = workflow({
+            "build": simple(steps=[artifact()]),
+            "verify": simple(steps=[artifact(False)]),
+        })
+        after_workflow = workflow({
+            "build": simple(steps=[artifact()]),
+            "verify": simple(steps=[{"run": "echo Preparando download"}, artifact(False)]),
+        })
+        report = compare(before_workflow, after_workflow)
+        before_warnings = []
+        after_warnings = []
+
+        for current_finding in report["before"]["findings"]:
+            if current_finding["rule"] == "R02_ARTIFACT_ORDER":
+                before_warnings.append(current_finding)
+
+        for current_finding in report["after"]["findings"]:
+            if current_finding["rule"] == "R02_ARTIFACT_ORDER":
+                after_warnings.append(current_finding)
+
+        self.assertEqual(1, len(before_warnings))
+        self.assertEqual(1, len(after_warnings))
+        self.assertEqual(1, before_warnings[0]["evidence"]["consumer_step"])
+        self.assertEqual(2, after_warnings[0]["evidence"]["consumer_step"])
+        self.assertNotIn("resolved_findings", report)
+
+        for side in ("before", "after"):
+            for current_finding in report[side]["findings"]:
+                self.assertNotIn("lifecycle", current_finding)
+
+
+    def test_download_before_upload_in_same_job(self):
+        model = workflow({"a": simple(steps=[artifact(False), artifact()])})
+        result = snapshot(model)
+        rules = collect_rules(result["findings"])
+        self.assertIn("R02_ARTIFACT_ORDER", rules)
+
+
+    def test_download_after_upload_in_same_job(self):
+        model = workflow({"a": simple(steps=[artifact(), artifact(False)])})
+        result = snapshot(model)
+        self.assertFalse(result["findings"])
+
+
     def test_future_history_is_not_silently_used(self):
         before_workflow = workflow({"a": simple()})
         after_workflow = workflow({"a": simple()})

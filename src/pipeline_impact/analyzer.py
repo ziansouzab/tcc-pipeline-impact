@@ -19,20 +19,192 @@ OUTPUT_REF = re.compile(
 )
 
 
+def finding(rule, kind, jobs, evidence, *, artifact=None, context=None, suggestion=None):
+    identifier_data = {
+        "rule": rule,
+        "jobs": jobs,
+        "artifact": artifact,
+        "context": context,
+        "evidence": evidence,
+    }
+    identifier_text = json.dumps(identifier_data, sort_keys=True)
+    identifier_bytes = identifier_text.encode()
+    identifier_hash = sha256(identifier_bytes).hexdigest()
+    finding_id = identifier_hash[:16]
+
+    return {
+        "id": finding_id,
+        "rule": rule,
+        "kind": kind,
+        "jobs": jobs,
+        "artifact": artifact,
+        "context": context,
+        "evidence": evidence,
+        "suggestion": suggestion,
+    }
+
+
+def artifact_steps(workflow):
+    uploads = []
+    downloads = []
+    limitations = []
+
+    for job, data in workflow.jobs.items():
+        if workflow.unresolved_job(job):
+            continue
+
+        for index, step in enumerate(data["steps"]):
+            uses = step.get("uses", "")
+            if not isinstance(uses, str):
+                continue
+
+            action_parts = uses.split("@")
+            action = action_parts[0].lower()
+            supported_actions = ("actions/upload-artifact", "actions/download-artifact")
+            if action not in supported_actions:
+                continue
+
+            params = step.get("with", {})
+            is_upload = action.endswith("/upload-artifact")
+
+            if is_upload:
+                name = params.get("name", "artifact")
+            else:
+                name = params.get("name", None)
+
+            unsupported_selector = False
+            if not isinstance(name, str):
+                unsupported_selector = True
+            elif not name.strip():
+                unsupported_selector = True
+            elif "${{" in name:
+                unsupported_selector = True
+
+            selector_keys = ("pattern", "run-id", "repository", "github-token")
+            for key in selector_keys:
+                if key in params:
+                    unsupported_selector = True
+                    break
+
+            if unsupported_selector:
+                limitations.append(
+                    f"Job {job}, step {index + 1}: seletor de artefato dinâmico, múltiplo ou externo."
+                )
+                continue
+
+            record = {
+                "job": job,
+                "step": index,
+                "name": name,
+                "condition": step["if"],
+            }
+
+            if is_upload:
+                uploads.append(record)
+            else:
+                downloads.append(record)
+
+    return uploads, downloads, limitations
+
+
+def precedes(workflow, producer, consumer):
+    if producer["job"] == consumer["job"]:
+        return producer["step"] < consumer["step"]
+
+    consumer_ancestors = workflow.ancestors(consumer["job"])
+    return producer["job"] in consumer_ancestors
+
+
 def snapshot(workflow: Workflow) -> dict:
+    uploads, downloads, artifact_limits = artifact_steps(workflow)
+    limits = list(workflow.limitations)
+    limits.extend(artifact_limits)
+    findings = []
+    data_pairs = set()
+    supported_contexts = []
+
+
+    by_lower = {}
+    for job in workflow.jobs:
+        by_lower[job.lower()] = job
+
+    for target, data in workflow.jobs.items():
+        job_text = json.dumps(data)
+        output_references = OUTPUT_REF.findall(job_text)
+
+        for source, output_name in output_references:
+            source = by_lower.get(source.lower(), source)
+            data_pairs.add((source, target))
+
+    unresolved_jobs = set()
+    for job in workflow.jobs:
+        if workflow.unresolved_job(job):
+            unresolved_jobs.add(job)
+
+
+    for consumer in downloads:
+        producers = []
+        for producer in uploads:
+            if producer["name"] == consumer["name"]:
+                producers.append(producer)
+
+        for producer in producers:
+            data_pairs.add((producer["job"], consumer["job"]))
+
+        ordered_producers = []
+        for producer in producers:
+            if precedes(workflow, producer, consumer):
+                ordered_producers.append(producer)
+
+        if consumer["job"] in unresolved_jobs:
+            continue
+        if workflow.jobs[consumer["job"]]["if"] == "false":
+            continue
+        if consumer["condition"] == "false":
+            continue
+
+        if not ordered_producers:
+            involved_jobs = {consumer["job"]}
+            producer_jobs = set()
+            for producer in producers:
+                involved_jobs.add(producer["job"])
+                producer_jobs.add(producer["job"])
+
+            evidence = {
+                "consumer_step": consumer["step"] + 1,
+                "producer_jobs": sorted(producer_jobs),
+                "reason": "Não há upload de mesmo nome com precedência garantida no modelo local.",
+            }
+            artifact_finding = finding(
+                "R02_ARTIFACT_ORDER",
+                "warning",
+                sorted(involved_jobs),
+                evidence,
+                artifact=consumer["name"],
+                suggestion="Verificar o produtor, o nome do artefato e a ordem necessária antes do download.",
+            )
+            findings.append(artifact_finding)
+
+
+    eligible_pairs = []
+
     edge_records = []
     for source, target in sorted(workflow.edges):
         edge_records.append([source, target])
+
+    data_relation_records = []
+    for producer_job, consumer_job in sorted(data_pairs):
+        data_relation_records.append([producer_job, consumer_job])
 
     return {
         "source": workflow.source,
         "jobs": sorted(workflow.jobs),
         "edges": edge_records,
-        "data_relations": [],
-        "structurally_unordered_pairs": [],
-        "contexts_checked": [],
-        "findings": [],
-        "limitations": sorted(set(workflow.limitations)),
+        "data_relations": data_relation_records,
+        "structurally_unordered_pairs": eligible_pairs,
+        "contexts_checked": supported_contexts,
+        "findings": findings,
+        "limitations": sorted(set(limits)),
     }
 
 

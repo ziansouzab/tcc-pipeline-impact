@@ -34,6 +34,43 @@
     "github_execution_verified": false
   },
   {
+    "id": "03-artefato-sem-ordem",
+    "title": "Remoção de needs perde a garantia de ordem do artefato",
+    "plan_rule": "R02",
+    "expected": {
+      "change_rules": [
+        "R01_DEPENDENCY_CHANGE"
+      ],
+      "after_rules": [
+        "R02_ARTIFACT_ORDER"
+      ],
+      "absent_warning_rules": [],
+      "unordered_pairs": null
+    },
+    "origin": "synthetic",
+    "split": "development",
+    "github_execution_verified": false
+  },
+  {
+    "id": "04-precedencia-transitiva",
+    "title": "Remover aresta redundante preserva entrega e ordem transitiva",
+    "plan_rule": "R02",
+    "expected": {
+      "change_rules": [
+        "R01_DEPENDENCY_CHANGE"
+      ],
+      "after_rules": [],
+      "absent_warning_rules": [
+        "R02_ARTIFACT_ORDER",
+        "R03_ARTIFACT_CONDITION"
+      ],
+      "unordered_pairs": null
+    },
+    "origin": "synthetic",
+    "split": "development",
+    "github_execution_verified": false
+  },
+  {
     "id": "07-condicao-alterada",
     "title": "Always em notificação é impacto a revisar, não defeito comprovado",
     "plan_rule": "R04",

@@ -1,0 +1,30 @@
+name: Experimento de pipeline
+'on':
+- push
+- pull_request
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - run: echo etapa experimental
+    - run: mkdir -p dist && echo exemplo > dist/app.txt
+    - uses: actions/upload-artifact@v4
+      with:
+        name: app
+        path: dist/app.txt
+  middle:
+    runs-on: ubuntu-latest
+    steps:
+    - run: echo etapa experimental
+    needs: build
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+    - run: echo etapa experimental
+    - uses: actions/download-artifact@v4
+      with:
+        name: app
+    needs:
+    - middle
