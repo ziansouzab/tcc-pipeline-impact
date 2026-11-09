@@ -15,7 +15,6 @@ class CliTests(unittest.TestCase):
     def setUp(self):
         (ROOT / ".tmp").mkdir(exist_ok=True)
 
-
     def test_reports_and_exit_codes(self):
         folder = ROOT / "cases/03-artefato-sem-ordem"
         with tempfile.TemporaryDirectory(dir=ROOT / ".tmp") as output:
@@ -41,7 +40,6 @@ class CliTests(unittest.TestCase):
                 self.assertIn("R02_ARTIFACT_ORDER", markdown_text)
                 self.assertEqual("0.2", report["schema_version"])
 
-
     def test_fail_on_warning_checks_after_when_workflow_is_unchanged(self):
         folder = ROOT / "cases/03-artefato-sem-ordem"
         warning_workflow = str(folder / "after.yml")
@@ -58,7 +56,6 @@ class CliTests(unittest.TestCase):
                 failure_args = args.copy()
                 failure_args.append("--fail-on-warning")
                 self.assertEqual(1, main(failure_args))
-
 
     def test_fail_on_warning_ignores_warnings_only_in_before(self):
         folder = ROOT / "cases/03-artefato-sem-ordem"
@@ -81,7 +78,6 @@ class CliTests(unittest.TestCase):
                 self.assertIn("warning", before_kinds)
                 self.assertNotIn("warning", after_kinds)
 
-
     def test_fail_on_warning_does_not_fail_for_opportunities(self):
         folder = ROOT / "cases/09-revisar-paralelismo"
 
@@ -102,7 +98,6 @@ class CliTests(unittest.TestCase):
                 self.assertIn("opportunity", after_kinds)
                 self.assertNotIn("warning", after_kinds)
 
-
     def test_old_warning_flag_is_rejected(self):
         folder = ROOT / "cases/03-artefato-sem-ordem"
         args = [
@@ -118,7 +113,6 @@ class CliTests(unittest.TestCase):
         self.assertEqual(2, raised.exception.code)
         self.assertIn("--fail-on-new-warning", error.getvalue())
 
-
     def test_bad_input_returns_two_without_traceback(self):
         with redirect_stderr(io.StringIO()) as error:
             args = ["--before", "missing.yml", "--after", "missing.yml"]
@@ -127,6 +121,51 @@ class CliTests(unittest.TestCase):
             self.assertEqual(2, main(args))
             self.assertNotIn("Traceback", error.getvalue())
 
+    def test_invalid_utf8_returns_two_without_traceback(self):
+        with tempfile.TemporaryDirectory(dir=ROOT / ".tmp") as temporary_folder:
+            workflow_path = Path(temporary_folder) / "invalid-encoding.yml"
+            workflow_path.write_bytes(b"on: push\njobs: \xff\n")
+            output_path = Path(temporary_folder) / "report"
+            arguments = [
+                "--before", str(workflow_path),
+                "--after", str(workflow_path),
+                "--output", str(output_path),
+            ]
+
+            with redirect_stderr(io.StringIO()) as error:
+                exit_code = main(arguments)
+
+            self.assertEqual(2, exit_code)
+            self.assertIn("UTF-8", error.getvalue())
+            self.assertNotIn("Traceback", error.getvalue())
+            self.assertFalse(output_path.exists())
+
+    def test_unsupported_yaml_returns_two_without_traceback(self):
+        with tempfile.TemporaryDirectory(dir=ROOT / ".tmp") as temporary_folder:
+            workflow_path = Path(temporary_folder) / "unsupported-value.yml"
+            workflow_text = (
+                "on: push\n"
+                "jobs:\n"
+                "  build:\n"
+                "    env:\n"
+                "      RELEASE_DATE: 2026-11-09\n"
+                "    steps: []\n"
+            )
+            workflow_path.write_text(workflow_text, encoding="utf-8")
+            output_path = Path(temporary_folder) / "report"
+            arguments = [
+                "--before", str(workflow_path),
+                "--after", str(workflow_path),
+                "--output", str(output_path),
+            ]
+
+            with redirect_stderr(io.StringIO()) as error:
+                exit_code = main(arguments)
+
+            self.assertEqual(2, exit_code)
+            self.assertIn("valores YAML não suportados", error.getvalue())
+            self.assertNotIn("Traceback", error.getvalue())
+            self.assertFalse(output_path.exists())
 
     def test_report_does_not_dump_run_secrets(self):
         old = workflow({"a": simple()})

@@ -3,6 +3,7 @@ from __future__ import annotations
 from copy import deepcopy
 from dataclasses import dataclass
 from graphlib import CycleError, TopologicalSorter
+import json
 from pathlib import Path
 import re
 from typing import Any
@@ -130,6 +131,14 @@ def parse(text: str, source: str = "<memory>") -> Workflow:
 
     if not isinstance(raw, dict):
         raise InputError(f"{source}: esperado um workflow com 'jobs' não vazio.")
+
+    try:
+        json.dumps(raw, allow_nan=False)
+
+    except (TypeError, ValueError) as exc:
+        raise InputError(
+            f"{source}: valores YAML não suportados pelo modelo JSON."
+        ) from exc
 
     if not isinstance(raw.get("jobs"), dict):
         raise InputError(f"{source}: esperado um workflow com 'jobs' não vazio.")
@@ -273,7 +282,13 @@ def parse(text: str, source: str = "<memory>") -> Workflow:
 
 def load(path: str | Path) -> Workflow:
     path = Path(path)
-    text = path.read_text(encoding="utf-8-sig")
+
+    try:
+        text = path.read_text(encoding="utf-8-sig")
+
+    except UnicodeDecodeError as exc:
+        raise InputError(f"{path}: o arquivo deve usar codificação UTF-8.") from exc
+
     source = str(path)
     workflow = parse(text, source)
     return workflow
