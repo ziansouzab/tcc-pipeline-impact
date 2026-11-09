@@ -4,7 +4,7 @@ Protótipo de análise de workflows do GitHub Actions.
 
 ## Etapa disponível
 
-Um construtor explícito para cada cenário sintético do catálogo.
+Análise dos doze pares e resumo local dos resultados.
 
 ## Preparação local
 
