@@ -8,7 +8,12 @@ __pycache__/
 *.egg-info/
 build/
 dist/
-/docs/
+/docs/*
+!/docs/ARQUITETURA.md
+!/docs/REGRAS-E-RELATORIO.md
+!/docs/LIMITACOES-DO-PROTOTIPO.md
+!/docs/DESENVOLVIMENTO.md
+!/docs/PROXIMOS-PASSOS.md
 /reports/
 /output/
 /verification.json
@@ -18,3 +23,5 @@ dist/
 !.env.example
 .coverage
 htmlcov/
+.DS_Store
+Thumbs.db
