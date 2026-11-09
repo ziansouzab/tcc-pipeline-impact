@@ -1,0 +1,13 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pipeline-impact"
+version = "0.1.0"
+description = "Experimental, evidence-based comparison of GitHub Actions workflows"
+requires-python = ">=3.11"
+dependencies = ["PyYAML>=6.0.1,<7"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
