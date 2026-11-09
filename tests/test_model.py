@@ -35,6 +35,11 @@ class ModelTests(unittest.TestCase):
             workflow({"a": simple("b"), "b": simple("a")})
 
 
+    def test_case_insensitive_dependencies(self):
+        model = workflow({"Build": simple(), "verify": simple("build")})
+        self.assertEqual({"Build"}, model.ancestors("verify"))
+
+
     def test_duplicate_case_insensitive_ids_are_rejected(self):
         with self.assertRaisesRegex(InputError, "maiúsculas"):
             workflow({"a": simple(), "A": simple()})

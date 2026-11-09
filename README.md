@@ -4,7 +4,7 @@ Protótipo de análise de workflows do GitHub Actions.
 
 ## Etapa disponível
 
-Leitura do YAML, validação inicial e representação dos jobs.
+Grafo de jobs com consultas de ancestrais e descendentes por DFS.
 
 ## Preparação local
 

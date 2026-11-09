@@ -84,8 +84,41 @@ class Workflow:
 
         return False
 
+    @property
+    def edges(self) -> set[tuple[str, str]]:
+        result = set()
 
+        for job, data in self.jobs.items():
+            for dep in data["needs"]:
+                result.add((dep, job))
 
+        return result
+
+    def ancestors(self, job: str, edges: set | None = None) -> set[str]:
+        if edges is None:
+            edges = self.edges
+
+        found: set[str] = set()
+        stack = [job]
+        while stack:
+            current = stack.pop()
+            for dep, target in edges:
+                if target == current and dep not in found:
+                    found.add(dep)
+                    stack.append(dep)
+        return found
+
+    def descendants(self, job: str) -> list[str]:
+        edges = self.edges
+        found: set[str] = set()
+        stack = [job]
+        while stack:
+            current = stack.pop()
+            for dep, target in edges:
+                if dep == current and target not in found:
+                    found.add(target)
+                    stack.append(target)
+        return sorted(found)
 
 
 def parse(text: str, source: str = "<memory>") -> Workflow:
