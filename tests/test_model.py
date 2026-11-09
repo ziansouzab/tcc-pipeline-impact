@@ -1,5 +1,6 @@
 import unittest
 
+from pipeline_impact.analyzer import compare
 from pipeline_impact.model import InputError, parse
 from tests.helpers import simple, workflow
 
@@ -43,6 +44,21 @@ class ModelTests(unittest.TestCase):
     def test_duplicate_case_insensitive_ids_are_rejected(self):
         with self.assertRaisesRegex(InputError, "maiúsculas"):
             workflow({"a": simple(), "A": simple()})
+
+
+    def test_order_of_needs_has_no_semantic_change(self):
+        old = workflow({
+            "a": simple(),
+            "b": simple(),
+            "c": simple(["a", "b"]),
+        })
+        new = workflow({
+            "a": simple(),
+            "b": simple(),
+            "c": simple(["b", "a"]),
+        })
+        report = compare(old, new)
+        self.assertEqual([], report["changes"])
 
 
 if __name__ == "__main__":

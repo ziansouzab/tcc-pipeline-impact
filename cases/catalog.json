@@ -1,0 +1,72 @@
+[
+  {
+    "id": "01-dependencia-adicionada",
+    "title": "Dependência nova afeta ordem, sem provar defeito",
+    "plan_rule": "R01",
+    "expected": {
+      "change_rules": [
+        "R01_DEPENDENCY_CHANGE",
+        "R01_REACHABILITY_CHANGE"
+      ],
+      "after_rules": [],
+      "absent_warning_rules": [],
+      "unordered_pairs": null
+    },
+    "origin": "synthetic",
+    "split": "development",
+    "github_execution_verified": false
+  },
+  {
+    "id": "02-ordem-da-lista",
+    "title": "Reordenar a lista de needs não muda precedência",
+    "plan_rule": "R01",
+    "expected": {
+      "change_rules": [],
+      "after_rules": [],
+      "absent_warning_rules": [
+        "R02_ARTIFACT_ORDER",
+        "R03_ARTIFACT_CONDITION"
+      ],
+      "unordered_pairs": null
+    },
+    "origin": "synthetic",
+    "split": "development",
+    "github_execution_verified": false
+  },
+  {
+    "id": "07-condicao-alterada",
+    "title": "Always em notificação é impacto a revisar, não defeito comprovado",
+    "plan_rule": "R04",
+    "expected": {
+      "change_rules": [
+        "R04_CONDITION_CHANGE"
+      ],
+      "after_rules": [],
+      "absent_warning_rules": [
+        "R02_ARTIFACT_ORDER",
+        "R03_ARTIFACT_CONDITION"
+      ],
+      "unordered_pairs": null
+    },
+    "origin": "synthetic",
+    "split": "development",
+    "github_execution_verified": false
+  },
+  {
+    "id": "08-politica-preservada",
+    "title": "Sem mudança de política de falha",
+    "plan_rule": "R04",
+    "expected": {
+      "change_rules": [],
+      "after_rules": [],
+      "absent_warning_rules": [
+        "R02_ARTIFACT_ORDER",
+        "R03_ARTIFACT_CONDITION"
+      ],
+      "unordered_pairs": null
+    },
+    "origin": "synthetic",
+    "split": "development",
+    "github_execution_verified": false
+  }
+]

@@ -4,7 +4,7 @@ Protótipo de análise de workflows do GitHub Actions.
 
 ## Etapa disponível
 
-Combinação das condições com as dependências no modelo de execução.
+Comparação R01 e R04, mudanças transitivas e primeiros casos de desenvolvimento.
 
 ## Preparação local
 

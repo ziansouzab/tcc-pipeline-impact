@@ -1,0 +1,22 @@
+name: Outro nome de apresentação
+'on':
+- push
+- pull_request
+permissions:
+  contents: read
+jobs:
+  a:
+    runs-on: ubuntu-latest
+    steps:
+    - run: echo etapa experimental
+  b:
+    runs-on: ubuntu-latest
+    steps:
+    - run: echo etapa experimental
+  c:
+    runs-on: ubuntu-latest
+    steps:
+    - run: echo etapa experimental
+    needs:
+    - b
+    - a

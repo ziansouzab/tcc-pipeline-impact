@@ -1,0 +1,17 @@
+{
+  "id": "08-politica-preservada",
+  "title": "Sem mudança de política de falha",
+  "plan_rule": "R04",
+  "expected": {
+    "change_rules": [],
+    "after_rules": [],
+    "absent_warning_rules": [
+      "R02_ARTIFACT_ORDER",
+      "R03_ARTIFACT_CONDITION"
+    ],
+    "unordered_pairs": null
+  },
+  "origin": "synthetic",
+  "split": "development",
+  "github_execution_verified": false
+}
