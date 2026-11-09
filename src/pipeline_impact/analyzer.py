@@ -186,6 +186,85 @@ def snapshot(workflow: Workflow) -> dict:
             findings.append(artifact_finding)
 
 
+    triggers = workflow.raw["on"]
+    if isinstance(triggers, (dict, list)):
+        events = set(triggers)
+    else:
+        events = {triggers}
+
+    filtered_events = False
+    if isinstance(triggers, dict):
+        for event_configuration in triggers.values():
+            if event_configuration:
+                filtered_events = True
+                break
+
+
+    if not filtered_events:
+        for context in CONTEXTS:
+            if context["github.event_name"] not in events:
+                continue
+
+            supported_contexts.append(context)
+            active_steps, state_limits = states(workflow, context)
+            limits.extend(state_limits)
+
+            for consumer in downloads:
+                consumer_key = (consumer["job"], consumer["step"])
+                if active_steps.get(consumer_key) is not True:
+                    continue
+
+                ordered_producers = []
+                for producer in uploads:
+                    if producer["name"] == consumer["name"]:
+                        if precedes(workflow, producer, consumer):
+                            ordered_producers.append(producer)
+
+                if not ordered_producers:
+
+                    continue
+
+                producer_states = []
+                for producer in ordered_producers:
+                    producer_key = (producer["job"], producer["step"])
+                    producer_states.append(active_steps[producer_key])
+
+                all_producers_skipped = True
+                for producer_state in producer_states:
+                    if producer_state is not False:
+                        all_producers_skipped = False
+                        break
+
+                if all_producers_skipped:
+                    involved_jobs = {consumer["job"]}
+                    producer_steps = []
+                    for producer in ordered_producers:
+                        involved_jobs.add(producer["job"])
+                        producer_steps.append({
+                            "job": producer["job"],
+                            "step": producer["step"] + 1,
+                        })
+
+                    evidence = {
+                        "consumer_step": consumer["step"] + 1,
+                        "producer_steps": producer_steps,
+                        "reason": "Download ativo e todos os uploads anteriores de mesmo nome pulados no contexto modelado.",
+                    }
+                    condition_finding = finding(
+                        "R03_ARTIFACT_CONDITION",
+                        "warning",
+                        sorted(involved_jobs),
+                        evidence,
+                        artifact=consumer["name"],
+                        context=context,
+                        suggestion="Alinhar as condições de produção e consumo, ou definir consumo opcional explicitamente.",
+                    )
+                    findings.append(condition_finding)
+                elif True not in producer_states:
+                    limits.append(
+                        f"Artefato {consumer['name']}: disponibilidade indeterminada no contexto {context}."
+                    )
+
     eligible_pairs = []
 
     edge_records = []

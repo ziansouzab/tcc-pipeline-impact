@@ -117,6 +117,45 @@ class AnalysisTests(unittest.TestCase):
         self.assertFalse(result["findings"])
 
 
+    def test_unknown_condition_does_not_become_missing_artifact(self):
+        producer = artifact()
+        producer["if"] = "inputs.make_artifact"
+        model = workflow({
+            "a": simple(steps=[producer]),
+            "b": simple("a", steps=[artifact(False)]),
+        })
+        result = snapshot(model)
+        rules = collect_rules(result["findings"])
+        self.assertTrue(result["limitations"])
+        self.assertNotIn("R03_ARTIFACT_CONDITION", rules)
+
+
+    def test_multiple_producers_one_active_is_enough_in_model(self):
+        skipped = artifact()
+        skipped["if"] = False
+        model = workflow({
+            "a": simple(steps=[skipped, artifact()]),
+            "b": simple("a", steps=[artifact(False)]),
+        })
+        result = snapshot(model)
+        rules = collect_rules(result["findings"])
+        self.assertNotIn("R03_ARTIFACT_CONDITION", rules)
+
+
+    def test_filtered_events_do_not_create_context_warning(self):
+        producer = artifact()
+        producer["if"] = "github.ref == 'refs/heads/main'"
+        model = workflow({
+            "a": simple(steps=[producer]),
+            "b": simple("a", steps=[artifact(False)]),
+        })
+        model.raw["on"] = {"push": {"branches": ["main"]}}
+        result = snapshot(model)
+        rules = collect_rules(result["findings"])
+        self.assertEqual([], result["contexts_checked"])
+        self.assertNotIn("R03_ARTIFACT_CONDITION", rules)
+
+
     def test_future_history_is_not_silently_used(self):
         before_workflow = workflow({"a": simple()})
         after_workflow = workflow({"a": simple()})

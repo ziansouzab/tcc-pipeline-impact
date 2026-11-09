@@ -1,0 +1,18 @@
+{
+  "id": "05-upload-condicional",
+  "title": "Upload só na main, download continua ativo em outros contextos",
+  "plan_rule": "R03",
+  "expected": {
+    "change_rules": [
+      "STEP_CHANGE"
+    ],
+    "after_rules": [
+      "R03_ARTIFACT_CONDITION"
+    ],
+    "absent_warning_rules": [],
+    "unordered_pairs": null
+  },
+  "origin": "synthetic",
+  "split": "development",
+  "github_execution_verified": false
+}
