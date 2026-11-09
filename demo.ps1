@@ -8,7 +8,10 @@ $beforeWorkflow = Join-Path $demoRoot 'cases/05-upload-condicional/before.yml'
 $afterWorkflow = Join-Path $demoRoot 'cases/05-upload-condicional/after.yml'
 $reportDirectory = Join-Path $demoRoot 'reports/demo'
 
-& $demoPython -m pipeline_impact --before $beforeWorkflow --after $afterWorkflow --output $reportDirectory
+& $demoPython -m pipeline_impact `
+    --before $beforeWorkflow `
+    --after $afterWorkflow `
+    --output $reportDirectory
 
 if ($LASTEXITCODE -ne 0) {
     throw "A análise falhou com código $LASTEXITCODE."
