@@ -330,6 +330,16 @@ def snapshot(workflow: Workflow) -> dict:
 
 
     eligible_pairs = []
+    for first_job, second_job in combinations(sorted(workflow.jobs), 2):
+        second_ancestors = workflow.ancestors(second_job)
+        if first_job in second_ancestors:
+            continue
+
+        first_ancestors = workflow.ancestors(first_job)
+        if second_job in first_ancestors:
+            continue
+
+        eligible_pairs.append([first_job, second_job])
 
     edge_records = []
     for source, target in sorted(workflow.edges):

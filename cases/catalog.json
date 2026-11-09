@@ -178,5 +178,46 @@
     "origin": "synthetic",
     "split": "development",
     "github_execution_verified": false
+  },
+  {
+    "id": "11-ja-sem-ordem",
+    "title": "Jobs sem needs já estão livres de ordem estrutural; sem economia estimada",
+    "plan_rule": "R06",
+    "expected": {
+      "change_rules": [],
+      "after_rules": [],
+      "absent_warning_rules": [
+        "R02_ARTIFACT_ORDER",
+        "R03_ARTIFACT_CONDITION",
+        "R05_PARALLEL_REVIEW"
+      ],
+      "unordered_pairs": [
+        [
+          "lint",
+          "verify"
+        ]
+      ]
+    },
+    "origin": "synthetic",
+    "split": "development",
+    "github_execution_verified": false
+  },
+  {
+    "id": "12-sequencia-preservada",
+    "title": "Ordem necessária não é paralelismo já existente",
+    "plan_rule": "R06",
+    "expected": {
+      "change_rules": [],
+      "after_rules": [],
+      "absent_warning_rules": [
+        "R02_ARTIFACT_ORDER",
+        "R03_ARTIFACT_CONDITION",
+        "R05_PARALLEL_REVIEW"
+      ],
+      "unordered_pairs": []
+    },
+    "origin": "synthetic",
+    "split": "development",
+    "github_execution_verified": false
   }
 ]

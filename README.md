@@ -4,7 +4,7 @@ Protótipo de análise de workflows do GitHub Actions.
 
 ## Etapa disponível
 
-R05 e guardas para preservar relações de dados reconhecidas.
+Identificação dos pares não ordenados e catálogo com os doze cenários.
 
 ## Preparação local
 
