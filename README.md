@@ -4,7 +4,7 @@ Protótipo de análise de workflows do GitHub Actions.
 
 ## Etapa disponível
 
-Identificação dos pares não ordenados e catálogo com os doze cenários.
+Apresentação dos diagnósticos, mudanças, evidências e limites.
 
 ## Preparação local
 
