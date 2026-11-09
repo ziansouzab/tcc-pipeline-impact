@@ -4,7 +4,7 @@ Protótipo de análise de workflows do GitHub Actions.
 
 ## Etapa disponível
 
-Entradas antes e depois, gravação dos relatórios e política de códigos de saída.
+Um construtor explícito para cada cenário sintético do catálogo.
 
 ## Preparação local
 
