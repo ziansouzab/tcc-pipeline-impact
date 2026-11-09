@@ -4,7 +4,7 @@ Protótipo de análise de workflows do GitHub Actions.
 
 ## Etapa disponível
 
-Grafo de jobs com consultas de ancestrais e descendentes por DFS.
+Elementos das condições e operações com verdadeiro, falso e indeterminado.
 
 ## Preparação local
 
