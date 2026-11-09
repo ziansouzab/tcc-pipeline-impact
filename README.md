@@ -4,7 +4,7 @@ Protótipo de análise de workflows do GitHub Actions.
 
 ## Etapa disponível
 
-Diagnóstico R03 nos cenários predefinidos e suporte à indeterminação.
+R05 e guardas para preservar relações de dados reconhecidas.
 
 ## Preparação local
 

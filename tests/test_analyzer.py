@@ -17,6 +17,29 @@ class AnalysisTests(unittest.TestCase):
         self.assertIn("UNMODELED_JOB_CHANGE", rules)
 
 
+    def test_concurrency_disables_parallel_suggestions(self):
+        model = workflow({
+            "a": simple(),
+            "b": simple("a", concurrency="deployment"),
+        })
+        result = snapshot(model)
+        kinds = collect_kinds(result["findings"])
+        self.assertTrue(model.limitations)
+        self.assertNotIn("opportunity", kinds)
+
+
+    def test_parallel_steps_not_treated_as_linear(self):
+        background_upload = artifact()
+        background_upload["background"] = True
+        model = workflow({
+            "a": simple(steps=[background_upload, artifact(False)]),
+        })
+        result = snapshot(model)
+        rules = collect_rules(result["findings"])
+        self.assertTrue(result["limitations"])
+        self.assertNotIn("R03_ARTIFACT_CONDITION", rules)
+
+
     def test_removed_dependency_affects_descendant_even_when_its_needs_stay(self):
         old = workflow({
             "a": simple(),
@@ -117,6 +140,55 @@ class AnalysisTests(unittest.TestCase):
         self.assertFalse(result["findings"])
 
 
+    def test_indirect_data_relation_blocks_parallel_suggestion(self):
+        model = workflow({
+            "build": simple(steps=[artifact()]),
+            "bridge": simple("build"),
+            "verify": simple("bridge", steps=[artifact(False)]),
+        })
+        result = snapshot(model)
+        rules = collect_rules(result["findings"])
+        self.assertNotIn("R05_PARALLEL_REVIEW", rules)
+
+
+    def test_outputs_block_suggestion(self):
+        consumer_step = {"run": "echo ${{ needs.build.outputs.version }}"}
+        model = workflow({
+            "build": simple(outputs={"version": "1"}),
+            "verify": simple("build", steps=[consumer_step]),
+        })
+        result = snapshot(model)
+        rules = collect_rules(result["findings"])
+        self.assertNotIn("R05_PARALLEL_REVIEW", rules)
+
+
+    def test_redundant_edge_not_recommended_for_parallelism(self):
+        model = workflow({
+            "a": simple(),
+            "b": simple("a"),
+            "c": simple(["a", "b"]),
+        })
+        result = snapshot(model)
+        suggested_edges = []
+
+        for current_finding in result["findings"]:
+            if current_finding["kind"] == "opportunity":
+                suggested_edges.append(current_finding["evidence"]["edge"])
+
+        self.assertNotIn(["a", "c"], suggested_edges)
+
+
+    def test_dynamic_artifact_is_indeterminate(self):
+        model = workflow({
+            "a": simple(steps=[artifact(name="${{ matrix.name }}")]),
+            "b": simple("a"),
+        })
+        result = snapshot(model)
+        kinds = collect_kinds(result["findings"])
+        self.assertTrue(result["limitations"])
+        self.assertNotIn("opportunity", kinds)
+
+
     def test_unknown_condition_does_not_become_missing_artifact(self):
         producer = artifact()
         producer["if"] = "inputs.make_artifact"
@@ -140,6 +212,17 @@ class AnalysisTests(unittest.TestCase):
         result = snapshot(model)
         rules = collect_rules(result["findings"])
         self.assertNotIn("R03_ARTIFACT_CONDITION", rules)
+
+
+    def test_reusable_job_and_matrix_marked_unresolved(self):
+        model = workflow({
+            "a": {"uses": "./.github/workflows/build.yml"},
+            "b": simple("a"),
+        })
+        result = snapshot(model)
+        kinds = collect_kinds(result["findings"])
+        self.assertTrue(result["limitations"])
+        self.assertNotIn("opportunity", kinds)
 
 
     def test_filtered_events_do_not_create_context_warning(self):

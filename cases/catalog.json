@@ -142,5 +142,41 @@
     "origin": "synthetic",
     "split": "development",
     "github_execution_verified": false
+  },
+  {
+    "id": "09-revisar-paralelismo",
+    "title": "Serialização sem relação de dados reconhecida: revisão condicional",
+    "plan_rule": "R05",
+    "expected": {
+      "change_rules": [
+        "R01_DEPENDENCY_CHANGE"
+      ],
+      "after_rules": [
+        "R05_PARALLEL_REVIEW"
+      ],
+      "absent_warning_rules": [],
+      "unordered_pairs": []
+    },
+    "origin": "synthetic",
+    "split": "development",
+    "github_execution_verified": false
+  },
+  {
+    "id": "10-dependencia-necessaria",
+    "title": "Transferência de artefato bloqueia sugestão de remover dependência",
+    "plan_rule": "R05",
+    "expected": {
+      "change_rules": [],
+      "after_rules": [],
+      "absent_warning_rules": [
+        "R02_ARTIFACT_ORDER",
+        "R03_ARTIFACT_CONDITION",
+        "R05_PARALLEL_REVIEW"
+      ],
+      "unordered_pairs": []
+    },
+    "origin": "synthetic",
+    "split": "development",
+    "github_execution_verified": false
   }
 ]

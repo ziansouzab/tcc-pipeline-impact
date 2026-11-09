@@ -265,6 +265,70 @@ def snapshot(workflow: Workflow) -> dict:
                         f"Artefato {consumer['name']}: disponibilidade indeterminada no contexto {context}."
                     )
 
+    has_concurrency = "concurrency" in workflow.raw
+    if not has_concurrency:
+        for job_data in workflow.jobs.values():
+            if "concurrency" in job_data:
+                has_concurrency = True
+                break
+
+
+    can_review_parallelism = True
+    if unresolved_jobs:
+        can_review_parallelism = False
+    if artifact_limits:
+        can_review_parallelism = False
+    if has_concurrency:
+        can_review_parallelism = False
+
+    if can_review_parallelism:
+        for source, target in sorted(workflow.edges):
+            edges_without_dependency = workflow.edges.copy()
+            edges_without_dependency.remove((source, target))
+
+            remaining_ancestors = workflow.ancestors(target, edges_without_dependency)
+            if source in remaining_ancestors:
+
+                continue
+
+            breaks_data_relation = False
+            for producer_job, consumer_job in data_pairs:
+                if producer_job not in workflow.jobs:
+                    continue
+                if consumer_job not in workflow.jobs:
+                    continue
+                if producer_job == consumer_job:
+                    continue
+
+                original_ancestors = workflow.ancestors(consumer_job)
+                if producer_job not in original_ancestors:
+                    continue
+
+                modified_ancestors = workflow.ancestors(
+                    consumer_job,
+                    edges_without_dependency,
+                )
+                if producer_job not in modified_ancestors:
+                    breaks_data_relation = True
+                    break
+
+            if breaks_data_relation:
+                continue
+
+            evidence = {
+                "edge": [source, target],
+                "reason": "Remover esta dependência altera a ordem; nenhuma relação de dados reconhecida exige a aresta.",
+            }
+            parallel_finding = finding(
+                "R05_PARALLEL_REVIEW",
+                "opportunity",
+                [source, target],
+                evidence,
+                suggestion="Revisar possível paralelismo. Confirmar efeitos externos, recursos compartilhados e proteção contra falhas antes de remover a dependência.",
+            )
+            findings.append(parallel_finding)
+
+
     eligible_pairs = []
 
     edge_records = []
