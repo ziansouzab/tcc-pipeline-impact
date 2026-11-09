@@ -5,140 +5,370 @@ from pathlib import Path
 import yaml
 
 
-def job(needs=None, artifact=None, download=None, **extra):
-    steps = [{"run": "echo etapa experimental"}]
-    if artifact:
-        steps.extend([
-            {"run": "mkdir -p dist && echo exemplo > dist/app.txt"},
-            {"uses": "actions/upload-artifact@v4", "with": {"name": artifact, "path": "dist/app.txt"}},
-        ])
-    if download:
-        steps.append({"uses": "actions/download-artifact@v4", "with": {"name": download}})
-    value = {
+def create_job(needs=None, upload_artifact=None, download_artifact=None):
+    steps = []
+    steps.append({"run": "echo etapa experimental"})
+
+    if upload_artifact:
+        prepare_artifact_step = {
+            "run": "mkdir -p dist && echo exemplo > dist/app.txt",
+        }
+        upload_step = {
+            "uses": "actions/upload-artifact@v4",
+            "with": {
+                "name": upload_artifact,
+                "path": "dist/app.txt",
+            },
+        }
+        steps.append(prepare_artifact_step)
+        steps.append(upload_step)
+
+    if download_artifact:
+        download_step = {
+            "uses": "actions/download-artifact@v4",
+            "with": {
+                "name": download_artifact,
+            },
+        }
+        steps.append(download_step)
+
+    job_data = {
         "runs-on": "ubuntu-latest",
         "steps": steps,
     }
-    for key, parameter_value in extra.items():
-        value[key] = parameter_value
+
     if needs is not None:
-        value["needs"] = needs
-    return value
+        job_data["needs"] = needs
+
+    return job_data
 
 
-def workflow(jobs):
-    return {
+def create_workflow(jobs):
+    configuration = {
         "name": "Experimento de pipeline",
         "on": ["push", "pull_request"],
         "permissions": {"contents": "read"},
         "jobs": jobs,
     }
+    return configuration
+
+
+def create_case(
+    case_id,
+    title,
+    plan_rule,
+    before_workflow,
+    after_workflow,
+    *,
+    change_rules=(),
+    after_rules=(),
+    absent_rules=(),
+    unordered_pairs=None,
+):
+    expected = {
+        "change_rules": list(change_rules),
+        "after_rules": list(after_rules),
+        "absent_warning_rules": list(absent_rules),
+        "unordered_pairs": unordered_pairs,
+    }
+    case = {
+        "id": case_id,
+        "title": title,
+        "plan_rule": plan_rule,
+        "before": before_workflow,
+        "after": after_workflow,
+        "expected": expected,
+    }
+    return case
+
+
+def dependency_added_case():
+    jobs = {}
+    jobs["build"] = create_job()
+    jobs["lint"] = create_job()
+    jobs["verify"] = create_job(needs="build")
+
+    before_workflow = create_workflow(jobs)
+    after_workflow = deepcopy(before_workflow)
+    after_workflow["jobs"]["lint"]["needs"] = "build"
+
+    return create_case(
+        "01-dependencia-adicionada",
+        "Dependência nova afeta ordem, sem provar defeito",
+        "R01",
+        before_workflow,
+        after_workflow,
+        change_rules=["R01_DEPENDENCY_CHANGE", "R01_REACHABILITY_CHANGE"],
+    )
+
+
+def dependency_list_reordered_case():
+    jobs = {}
+    jobs["a"] = create_job()
+    jobs["b"] = create_job()
+    jobs["c"] = create_job(needs=["a", "b"])
+
+    before_workflow = create_workflow(jobs)
+    after_workflow = deepcopy(before_workflow)
+    after_workflow["name"] = "Outro nome de apresentação"
+    after_workflow["jobs"]["c"]["needs"] = ["b", "a"]
+
+    return create_case(
+        "02-ordem-da-lista",
+        "Reordenar a lista de needs não muda precedência",
+        "R01",
+        before_workflow,
+        after_workflow,
+        absent_rules=["R02_ARTIFACT_ORDER", "R03_ARTIFACT_CONDITION"],
+    )
+
+
+def artifact_without_order_case():
+    jobs = {}
+    jobs["build"] = create_job(upload_artifact="app")
+    jobs["verify"] = create_job(needs="build", download_artifact="app")
+
+    before_workflow = create_workflow(jobs)
+    after_workflow = deepcopy(before_workflow)
+    del after_workflow["jobs"]["verify"]["needs"]
+
+    return create_case(
+        "03-artefato-sem-ordem",
+        "Remoção de needs perde a garantia de ordem do artefato",
+        "R02",
+        before_workflow,
+        after_workflow,
+        change_rules=["R01_DEPENDENCY_CHANGE"],
+        after_rules=["R02_ARTIFACT_ORDER"],
+    )
+
+
+def transitive_precedence_case():
+    jobs = {}
+    jobs["build"] = create_job(upload_artifact="app")
+    jobs["middle"] = create_job(needs="build")
+    jobs["verify"] = create_job(
+        needs=["build", "middle"],
+        download_artifact="app",
+    )
+
+    before_workflow = create_workflow(jobs)
+    after_workflow = deepcopy(before_workflow)
+    after_workflow["jobs"]["verify"]["needs"] = ["middle"]
+
+    return create_case(
+        "04-precedencia-transitiva",
+        "Remover aresta redundante preserva entrega e ordem transitiva",
+        "R02",
+        before_workflow,
+        after_workflow,
+        change_rules=["R01_DEPENDENCY_CHANGE"],
+        absent_rules=["R02_ARTIFACT_ORDER", "R03_ARTIFACT_CONDITION"],
+    )
+
+
+def conditional_upload_case():
+    jobs = {}
+    jobs["build"] = create_job(upload_artifact="app")
+    jobs["verify"] = create_job(needs="build", download_artifact="app")
+
+    before_workflow = create_workflow(jobs)
+    after_workflow = deepcopy(before_workflow)
+    upload_step = after_workflow["jobs"]["build"]["steps"][-1]
+    upload_step["if"] = "github.ref == 'refs/heads/main'"
+
+    return create_case(
+        "05-upload-condicional",
+        "Upload só na main, download continua ativo em outros contextos",
+        "R03",
+        before_workflow,
+        after_workflow,
+        change_rules=["STEP_CHANGE"],
+        after_rules=["R03_ARTIFACT_CONDITION"],
+    )
+
+
+def protected_consumption_case():
+    jobs = {}
+    jobs["build"] = create_job(upload_artifact="app")
+    jobs["verify"] = create_job(needs="build", download_artifact="app")
+
+    before_workflow = create_workflow(jobs)
+    after_workflow = deepcopy(before_workflow)
+    upload_step = after_workflow["jobs"]["build"]["steps"][-1]
+    upload_step["if"] = "github.ref == 'refs/heads/main'"
+    after_workflow["jobs"]["verify"]["if"] = "github.ref == 'refs/heads/main'"
+
+    return create_case(
+        "06-consumo-protegido",
+        "Condição compatível impede download quando upload é pulado",
+        "R03",
+        before_workflow,
+        after_workflow,
+        change_rules=["R04_CONDITION_CHANGE"],
+        absent_rules=["R02_ARTIFACT_ORDER", "R03_ARTIFACT_CONDITION"],
+    )
+
+
+def changed_condition_case():
+    jobs = {}
+    jobs["build"] = create_job()
+    jobs["notify"] = create_job(needs="build")
+
+    before_workflow = create_workflow(jobs)
+    after_workflow = deepcopy(before_workflow)
+    after_workflow["jobs"]["notify"]["if"] = "${{ always() }}"
+
+    return create_case(
+        "07-condicao-alterada",
+        "Always em notificação é impacto a revisar, não defeito comprovado",
+        "R04",
+        before_workflow,
+        after_workflow,
+        change_rules=["R04_CONDITION_CHANGE"],
+        absent_rules=["R02_ARTIFACT_ORDER", "R03_ARTIFACT_CONDITION"],
+    )
+
+
+def preserved_failure_policy_case():
+    build_job = create_job()
+    build_job["continue-on-error"] = False
+    jobs = {"build": build_job}
+
+    before_workflow = create_workflow(jobs)
+    after_workflow = deepcopy(before_workflow)
+    after_workflow["name"] = "Apenas nome diferente"
+
+    return create_case(
+        "08-politica-preservada",
+        "Sem mudança de política de falha",
+        "R04",
+        before_workflow,
+        after_workflow,
+        absent_rules=["R02_ARTIFACT_ORDER", "R03_ARTIFACT_CONDITION"],
+    )
+
+
+def parallelism_review_case():
+    jobs = {}
+    jobs["lint"] = create_job()
+    jobs["verify"] = create_job()
+
+    before_workflow = create_workflow(jobs)
+    after_workflow = deepcopy(before_workflow)
+    after_workflow["jobs"]["verify"]["needs"] = "lint"
+
+    return create_case(
+        "09-revisar-paralelismo",
+        "Serialização sem relação de dados reconhecida: revisão condicional",
+        "R05",
+        before_workflow,
+        after_workflow,
+        change_rules=["R01_DEPENDENCY_CHANGE"],
+        after_rules=["R05_PARALLEL_REVIEW"],
+        unordered_pairs=[],
+    )
+
+
+def required_dependency_case():
+    jobs = {}
+    jobs["build"] = create_job(upload_artifact="app")
+    jobs["verify"] = create_job(needs="build", download_artifact="app")
+
+    before_workflow = create_workflow(jobs)
+    after_workflow = deepcopy(before_workflow)
+    after_workflow["name"] = "Relação de dados preservada"
+
+    return create_case(
+        "10-dependencia-necessaria",
+        "Transferência de artefato bloqueia sugestão de remover dependência",
+        "R05",
+        before_workflow,
+        after_workflow,
+        absent_rules=[
+            "R02_ARTIFACT_ORDER",
+            "R03_ARTIFACT_CONDITION",
+            "R05_PARALLEL_REVIEW",
+        ],
+        unordered_pairs=[],
+    )
+
+
+def already_unordered_case():
+    jobs = {}
+    jobs["lint"] = create_job()
+    jobs["verify"] = create_job()
+
+    before_workflow = create_workflow(jobs)
+    after_workflow = deepcopy(before_workflow)
+    after_workflow["name"] = "Já sem ordem imposta"
+
+    return create_case(
+        "11-ja-sem-ordem",
+        "Jobs sem needs já estão livres de ordem estrutural; sem economia estimada",
+        "R06",
+        before_workflow,
+        after_workflow,
+        absent_rules=[
+            "R02_ARTIFACT_ORDER",
+            "R03_ARTIFACT_CONDITION",
+            "R05_PARALLEL_REVIEW",
+        ],
+        unordered_pairs=[["lint", "verify"]],
+    )
+
+
+def preserved_sequence_case():
+    jobs = {}
+    jobs["build"] = create_job(upload_artifact="app")
+    jobs["verify"] = create_job(needs="build", download_artifact="app")
+
+    before_workflow = create_workflow(jobs)
+    after_workflow = deepcopy(before_workflow)
+    after_workflow["name"] = "Sequência necessária"
+
+    return create_case(
+        "12-sequencia-preservada",
+        "Ordem necessária não é paralelismo já existente",
+        "R06",
+        before_workflow,
+        after_workflow,
+        absent_rules=[
+            "R02_ARTIFACT_ORDER",
+            "R03_ARTIFACT_CONDITION",
+            "R05_PARALLEL_REVIEW",
+        ],
+        unordered_pairs=[],
+    )
 
 
 def definitions():
     cases = []
-
-    def add(case_id, title, rule, before, after, *, changes=(), after_rules=(), absent=(), pairs=None):
-        expected = {
-            "change_rules": list(changes),
-            "after_rules": list(after_rules),
-            "absent_warning_rules": list(absent),
-            "unordered_pairs": pairs,
-        }
-        case = {
-            "id": case_id,
-            "title": title,
-            "plan_rule": rule,
-            "before": before,
-            "after": after,
-            "expected": expected,
-        }
-        cases.append(case)
-
-    old = workflow({"build": job(), "lint": job(), "verify": job(needs="build")})
-    new = deepcopy(old)
-    new["jobs"]["lint"]["needs"] = "build"
-    add("01-dependencia-adicionada", "Dependência nova afeta ordem, sem provar defeito", "R01", old, new,
-        changes=["R01_DEPENDENCY_CHANGE", "R01_REACHABILITY_CHANGE"])
-
-    old = workflow({"a": job(), "b": job(), "c": job(needs=["a", "b"])})
-    new = deepcopy(old)
-    new["name"] = "Outro nome de apresentação"
-    new["jobs"]["c"]["needs"] = ["b", "a"]
-    add("02-ordem-da-lista", "Reordenar a lista de needs não muda precedência", "R01", old, new,
-        absent=["R02_ARTIFACT_ORDER", "R03_ARTIFACT_CONDITION"])
-
-    old = workflow({"build": job(artifact="app"), "verify": job(needs="build", download="app")})
-    new = deepcopy(old)
-    del new["jobs"]["verify"]["needs"]
-    add("03-artefato-sem-ordem", "Remoção de needs perde a garantia de ordem do artefato", "R02", old, new,
-        changes=["R01_DEPENDENCY_CHANGE"], after_rules=["R02_ARTIFACT_ORDER"])
-
-    old = workflow({"build": job(artifact="app"), "middle": job(needs="build"),
-                    "verify": job(needs=["build", "middle"], download="app")})
-    new = deepcopy(old)
-    new["jobs"]["verify"]["needs"] = ["middle"]
-    add("04-precedencia-transitiva", "Remover aresta redundante preserva entrega e ordem transitiva", "R02", old, new,
-        changes=["R01_DEPENDENCY_CHANGE"], absent=["R02_ARTIFACT_ORDER", "R03_ARTIFACT_CONDITION"])
-
-    old = workflow({"build": job(artifact="app"), "verify": job(needs="build", download="app")})
-    new = deepcopy(old)
-    new["jobs"]["build"]["steps"][-1]["if"] = "github.ref == 'refs/heads/main'"
-    add("05-upload-condicional", "Upload só na main, download continua ativo em outros contextos", "R03", old, new,
-        changes=["STEP_CHANGE"], after_rules=["R03_ARTIFACT_CONDITION"])
-
-    old = workflow({"build": job(artifact="app"), "verify": job(needs="build", download="app")})
-    new = deepcopy(old)
-    new["jobs"]["build"]["steps"][-1]["if"] = "github.ref == 'refs/heads/main'"
-    new["jobs"]["verify"]["if"] = "github.ref == 'refs/heads/main'"
-    add("06-consumo-protegido", "Condição compatível impede download quando upload é pulado", "R03", old, new,
-        changes=["R04_CONDITION_CHANGE"], absent=["R02_ARTIFACT_ORDER", "R03_ARTIFACT_CONDITION"])
-
-    old = workflow({"build": job(), "notify": job(needs="build")})
-    new = deepcopy(old)
-    new["jobs"]["notify"]["if"] = "${{ always() }}"
-    add("07-condicao-alterada", "Always em notificação é impacto a revisar, não defeito comprovado", "R04", old, new,
-        changes=["R04_CONDITION_CHANGE"], absent=["R02_ARTIFACT_ORDER", "R03_ARTIFACT_CONDITION"])
-
-    old = workflow({"build": job(**{"continue-on-error": False})})
-    new = deepcopy(old)
-    new["name"] = "Apenas nome diferente"
-    add("08-politica-preservada", "Sem mudança de política de falha", "R04", old, new,
-        absent=["R02_ARTIFACT_ORDER", "R03_ARTIFACT_CONDITION"])
-
-    old = workflow({"lint": job(), "verify": job()})
-    new = deepcopy(old)
-    new["jobs"]["verify"]["needs"] = "lint"
-    add("09-revisar-paralelismo", "Serialização sem relação de dados reconhecida: revisão condicional", "R05", old, new,
-        changes=["R01_DEPENDENCY_CHANGE"], after_rules=["R05_PARALLEL_REVIEW"], pairs=[])
-
-    old = workflow({"build": job(artifact="app"), "verify": job(needs="build", download="app")})
-    new = deepcopy(old)
-    new["name"] = "Relação de dados preservada"
-    add("10-dependencia-necessaria", "Transferência de artefato bloqueia sugestão de remover dependência", "R05", old, new,
-        absent=["R02_ARTIFACT_ORDER", "R03_ARTIFACT_CONDITION", "R05_PARALLEL_REVIEW"], pairs=[])
-
-    old = workflow({"lint": job(), "verify": job()})
-    new = deepcopy(old)
-    new["name"] = "Já sem ordem imposta"
-    add("11-ja-sem-ordem", "Jobs sem needs já estão livres de ordem estrutural; sem economia estimada", "R06", old, new,
-        absent=["R02_ARTIFACT_ORDER", "R03_ARTIFACT_CONDITION", "R05_PARALLEL_REVIEW"], pairs=[["lint", "verify"]])
-
-    old = workflow({"build": job(artifact="app"), "verify": job(needs="build", download="app")})
-    new = deepcopy(old)
-    new["name"] = "Sequência necessária"
-    add("12-sequencia-preservada", "Ordem necessária não é paralelismo já existente", "R06", old, new,
-        absent=["R02_ARTIFACT_ORDER", "R03_ARTIFACT_CONDITION", "R05_PARALLEL_REVIEW"], pairs=[])
+    cases.append(dependency_added_case())
+    cases.append(dependency_list_reordered_case())
+    cases.append(artifact_without_order_case())
+    cases.append(transitive_precedence_case())
+    cases.append(conditional_upload_case())
+    cases.append(protected_consumption_case())
+    cases.append(changed_condition_case())
+    cases.append(preserved_failure_policy_case())
+    cases.append(parallelism_review_case())
+    cases.append(required_dependency_case())
+    cases.append(already_unordered_case())
+    cases.append(preserved_sequence_case())
     return cases
 
 
 def main():
-    root = Path(__file__).resolve().parents[1] / "cases"
+    cases_directory = Path(__file__).resolve().parents[1] / "cases"
     catalog = []
+
     for case in definitions():
-        folder = root / case["id"]
-        folder.mkdir(parents=True, exist_ok=True)
+        case_directory = cases_directory / case["id"]
+        case_directory.mkdir(parents=True, exist_ok=True)
+
         for side in ("before", "after"):
-            workflow_path = folder / f"{side}.yml"
+            workflow_path = case_directory / f"{side}.yml"
             workflow_text = yaml.safe_dump(
                 case[side],
                 allow_unicode=True,
@@ -146,24 +376,25 @@ def main():
             )
             workflow_path.write_text(workflow_text, encoding="utf-8")
 
-        record = {}
+        case_metadata = {}
         for key, value in case.items():
             if key not in ("before", "after"):
-                record[key] = value
+                case_metadata[key] = value
 
-        record["origin"] = "synthetic"
-        record["split"] = "development"
-        record["github_execution_verified"] = False
+        case_metadata["origin"] = "synthetic"
+        case_metadata["split"] = "development"
+        case_metadata["github_execution_verified"] = False
 
-        metadata_path = folder / "case.json"
-        metadata_text = json.dumps(record, ensure_ascii=False, indent=2)
+        metadata_path = case_directory / "case.json"
+        metadata_text = json.dumps(case_metadata, ensure_ascii=False, indent=2)
         metadata_path.write_text(metadata_text + "\n", encoding="utf-8")
-        catalog.append(record)
+        catalog.append(case_metadata)
 
-    catalog_path = root / "catalog.json"
+    catalog_path = cases_directory / "catalog.json"
     catalog_text = json.dumps(catalog, ensure_ascii=False, indent=2)
     catalog_path.write_text(catalog_text + "\n", encoding="utf-8")
-    print(f"{len(catalog)} pares de desenvolvimento materializados em {root}.")
+
+    print(f"{len(catalog)} pares de desenvolvimento materializados em {cases_directory}.")
 
 
 if __name__ == "__main__":
