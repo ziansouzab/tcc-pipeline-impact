@@ -54,6 +54,56 @@ class ModelTests(unittest.TestCase):
         report = compare(old, new)
         self.assertEqual([], report["changes"])
 
+    def test_unsupported_yaml_values_are_rejected(self):
+        unsupported_values = [
+            "2026-11-09",
+            "!!binary aGVsbG8=",
+            "!!set {item: null}",
+            ".nan",
+            ".inf",
+        ]
+
+        for yaml_value in unsupported_values:
+            with self.subTest(value=yaml_value):
+                yaml_text = (
+                    "on: push\n"
+                    "jobs:\n"
+                    "  build:\n"
+                    "    env:\n"
+                    f"      VALUE: {yaml_value}\n"
+                    "    steps: []\n"
+                )
+
+                with self.assertRaisesRegex(InputError, "valores YAML não suportados"):
+                    parse(yaml_text)
+
+    def test_recursive_yaml_values_are_rejected(self):
+        yaml_text = (
+            "on: push\n"
+            "jobs:\n"
+            "  build:\n"
+            "    env:\n"
+            "      VALUES: &values [*values]\n"
+            "    steps: []\n"
+        )
+
+        with self.assertRaisesRegex(InputError, "valores YAML não suportados"):
+            parse(yaml_text)
+
+    def test_quoted_dates_remain_supported_strings(self):
+        yaml_text = (
+            "on: push\n"
+            "jobs:\n"
+            "  build:\n"
+            "    env:\n"
+            "      RELEASE_DATE: '2026-11-09'\n"
+            "    steps: []\n"
+        )
+
+        model = parse(yaml_text)
+
+        self.assertEqual("2026-11-09", model.jobs["build"]["env"]["RELEASE_DATE"])
+
 
 if __name__ == "__main__":
     unittest.main()

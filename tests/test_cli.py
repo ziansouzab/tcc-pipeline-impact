@@ -121,6 +121,52 @@ class CliTests(unittest.TestCase):
             self.assertEqual(2, main(args))
             self.assertNotIn("Traceback", error.getvalue())
 
+    def test_invalid_utf8_returns_two_without_traceback(self):
+        with tempfile.TemporaryDirectory(dir=ROOT / ".tmp") as temporary_folder:
+            workflow_path = Path(temporary_folder) / "invalid-encoding.yml"
+            workflow_path.write_bytes(b"on: push\njobs: \xff\n")
+            output_path = Path(temporary_folder) / "report"
+            arguments = [
+                "--before", str(workflow_path),
+                "--after", str(workflow_path),
+                "--output", str(output_path),
+            ]
+
+            with redirect_stderr(io.StringIO()) as error:
+                exit_code = main(arguments)
+
+            self.assertEqual(2, exit_code)
+            self.assertIn("UTF-8", error.getvalue())
+            self.assertNotIn("Traceback", error.getvalue())
+            self.assertFalse(output_path.exists())
+
+    def test_unsupported_yaml_returns_two_without_traceback(self):
+        with tempfile.TemporaryDirectory(dir=ROOT / ".tmp") as temporary_folder:
+            workflow_path = Path(temporary_folder) / "unsupported-value.yml"
+            workflow_text = (
+                "on: push\n"
+                "jobs:\n"
+                "  build:\n"
+                "    env:\n"
+                "      RELEASE_DATE: 2026-11-09\n"
+                "    steps: []\n"
+            )
+            workflow_path.write_text(workflow_text, encoding="utf-8")
+            output_path = Path(temporary_folder) / "report"
+            arguments = [
+                "--before", str(workflow_path),
+                "--after", str(workflow_path),
+                "--output", str(output_path),
+            ]
+
+            with redirect_stderr(io.StringIO()) as error:
+                exit_code = main(arguments)
+
+            self.assertEqual(2, exit_code)
+            self.assertIn("valores YAML não suportados", error.getvalue())
+            self.assertNotIn("Traceback", error.getvalue())
+            self.assertFalse(output_path.exists())
+
     def test_report_does_not_dump_run_secrets(self):
         old = workflow({"a": simple()})
         new = workflow({
