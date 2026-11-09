@@ -4,7 +4,7 @@ Protótipo de análise de workflows do GitHub Actions.
 
 ## Etapa disponível
 
-Análise dos doze pares e resumo local dos resultados.
+Verificação da suíte, dependências, casos e captura UTF-8 dos resultados.
 
 ## Preparação local
 
