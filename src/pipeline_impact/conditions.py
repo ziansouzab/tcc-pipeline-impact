@@ -239,3 +239,53 @@ def evaluate(
 
 
     return tri_and(success, value)
+
+
+def states(workflow, context: dict[str, str | bool | None]) -> tuple[dict, list[str]]:
+    job_states = {}
+    step_states = {}
+    limitations = []
+
+
+    for job in workflow.order:
+        data = workflow.jobs[job]
+        ancestor_states = []
+
+        for ancestor in workflow.ancestors(job):
+            ancestor_states.append(job_states[ancestor])
+
+        if False in ancestor_states:
+            success = False
+        elif None in ancestor_states:
+            success = None
+        else:
+            success = True
+
+        try:
+            active = evaluate(data["if"], context, success)
+        except UnsupportedCondition:
+            active = None
+            limitations.append(f"Job {job}: condição não suportada: {data['if']}")
+
+        if workflow.unresolved_job(job):
+            active = None
+
+        job_states[job] = active
+
+        for index, step in enumerate(data["steps"]):
+            step_key = (job, index)
+
+            try:
+                condition_result = evaluate(step["if"], context)
+                step_states[step_key] = tri_and(active, condition_result)
+            except UnsupportedCondition:
+                if active is False:
+                    step_states[step_key] = False
+                else:
+                    step_states[step_key] = None
+
+                limitations.append(
+                    f"Job {job}, step {index + 1}: condição não suportada: {step['if']}"
+                )
+
+    return step_states, limitations

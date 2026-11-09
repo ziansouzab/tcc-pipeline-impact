@@ -4,7 +4,7 @@ Protótipo de análise de workflows do GitHub Actions.
 
 ## Etapa disponível
 
-Comparações, operadores lógicos e funções de status no subconjunto suportado.
+Combinação das condições com as dependências no modelo de execução.
 
 ## Preparação local
 
