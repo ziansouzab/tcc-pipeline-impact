@@ -4,7 +4,7 @@ Protótipo de análise de workflows do GitHub Actions.
 
 ## Etapa disponível
 
-Elementos das condições e operações com verdadeiro, falso e indeterminado.
+Comparações, operadores lógicos e funções de status no subconjunto suportado.
 
 ## Preparação local
 
