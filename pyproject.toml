@@ -6,11 +6,25 @@ build-backend = "setuptools.build_meta"
 name = "pipeline-impact"
 version = "0.1.0"
 description = "Experimental, evidence-based comparison of GitHub Actions workflows"
+readme = "README.md"
 requires-python = ">=3.11"
 dependencies = ["PyYAML>=6.0.1,<7"]
+keywords = ["ci", "github-actions", "static-analysis"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Topic :: Software Development :: Quality Assurance",
+]
+
+[project.urls]
+Repository = "https://github.com/ziansouzab/tcc-pipeline-analizer"
+Documentation = "https://github.com/ziansouzab/tcc-pipeline-analizer/blob/main/README.md"
 
 [project.scripts]
 pipeline-impact = "pipeline_impact.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+include = ["pipeline_impact*"]
+namespaces = false
