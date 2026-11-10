@@ -41,12 +41,22 @@ def verification_commands():
         "--output",
         "reports/demo",
     ]
+    audit_command = [
+        sys.executable,
+        "-m",
+        "pipeline_impact",
+        "audit",
+        "cases/03-artefato-sem-ordem/after.yml",
+        "--output",
+        "reports/audit-demo",
+    ]
 
     commands = []
     commands.append(test_command)
     commands.append(dependency_command)
     commands.append(cases_command)
     commands.append(demonstration_command)
+    commands.append(audit_command)
     return commands
 
 

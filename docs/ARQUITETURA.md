@@ -1,44 +1,46 @@
 # Arquitetura
 
-O Pipeline Impact recebe dois arquivos locais de workflow e produz uma
-comparação estruturada. Os módulos distinguem entrada, modelagem, interpretação
-de condições, análise e apresentação.
+O Pipeline Impact audita um workflow local ou compara duas versões. Os módulos
+distinguem entrada, modelagem, interpretação de condições, análise e
+apresentação.
 
-Esta documentação descreve a ferramenta 0.1.0 e o contrato JSON 0.2. Histórico,
-seleção automática de versões Git e integração com Actions são extensões
-previstas, detalhadas nos [próximos passos](PROXIMOS-PASSOS.md).
+Esta documentação descreve a ferramenta 0.2.0 e o contrato JSON 0.3. Os próximos
+marcos incluem histórico, seleção automática de versões Git e integração com
+Actions. [Próximos passos](PROXIMOS-PASSOS.md).
 
 ## Fluxo de processamento
 
 ```mermaid
 flowchart TD
-    A[YAML anterior e modificado] --> B[CLI recebe argumentos]
-    B --> C[Leitura e modelagem de cada arquivo]
-    C --> D[Dois objetos Workflow]
-    D --> E[compare identifica mudanças]
-    E --> F[snapshot analisa cada versão]
-    F --> G[Relatório estruturado]
+    A[CLI recebe argumentos] --> B{Modo}
+    B -->|Auditoria| C[Carrega um YAML]
+    B -->|Comparação| D[Carrega dois YAMLs]
+    C --> E[audit chama snapshot uma vez]
+    D --> F[compare calcula mudanças e chama snapshot para cada versão]
+    E --> G[Relatório estruturado]
+    F --> G
     G --> H[JSON]
     G --> I[reporting apresenta Markdown e grafos]
 ```
 
-`compare()` reúne diferenças e chama `snapshot()` para as duas configurações.
-Cada snapshot contém relações, diagnósticos e limitações daquela configuração.
-O relatório distingue esses diagnósticos das mudanças encontradas entre versões.
+`audit()` usa um snapshot em `analysis`. `compare()` reúne diferenças em
+`changes` e registra os snapshots em `before` e `after`. Cada snapshot contém
+relações, diagnósticos, cobertura e limitações da configuração.
 
 ## Responsabilidades
 
 | Módulo | Responsabilidade |
 |---|---|
-| [cli.py](../src/pipeline_impact/cli.py) | Interpretar argumentos, carregar entradas e gravar relatórios |
+| [cli.py](../src/pipeline_impact/cli.py) | Identificar o modo, carregar entradas e gravar relatórios |
 | [model.py](../src/pipeline_impact/model.py) | Ler e normalizar YAML, verificar a estrutura suportada e oferecer consultas ao grafo |
 | [conditions.py](../src/pipeline_impact/conditions.py) | Interpretar o subconjunto de condições e calcular estados no modelo |
-| [analyzer.py](../src/pipeline_impact/analyzer.py) | Comparar versões, reconhecer relações e aplicar verificações |
+| [analyzer.py](../src/pipeline_impact/analyzer.py) | Auditar, comparar, aplicar verificações e registrar a cobertura |
 | [reporting.py](../src/pipeline_impact/reporting.py) | Apresentar os resultados e os grafos em Markdown |
 | [__main__.py](../src/pipeline_impact/__main__.py) | Encaminhar `python -m pipeline_impact` para a CLI |
 
-Os relatórios são gerados a partir dos resultados da análise. A apresentação não
-executa novamente as regras nem modifica os workflows de entrada.
+O módulo de apresentação usa os resultados calculados para montar os grafos,
+as explicações dos achados e a seção de cobertura. A CLI grava o JSON e o
+Markdown na pasta de saída.
 
 ## Modelo e grafo
 

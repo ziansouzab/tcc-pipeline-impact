@@ -1,22 +1,21 @@
 # Próximos passos
 
-A versão atual compara dois arquivos locais. O próximo marco é colocar esse
-diagnóstico em um ambiente experimental do GitHub Actions, preservando o núcleo
-e o contrato dos relatórios.
+A versão atual audita um workflow local e compara duas versões. O próximo marco
+é usar os dois modos em um ambiente experimental do GitHub Actions, com o mesmo
+núcleo de análise e contrato de relatórios.
 
-Nenhum workflow de integração do analisador é fornecido nesta etapa. Os itens
-abaixo são requisitos para a próxima implementação, não funcionalidades prontas.
+Os requisitos a seguir orientam a próxima implementação da integração.
 
 ## Primeiro marco no GitHub Actions
 
 Uma alteração em um workflow deve produzir este percurso:
 
 1. Detectar mudanças nos caminhos de pipeline monitorados.
-2. Identificar e obter as configurações anterior e modificada corretas.
-3. Preparar o ambiente Python e executar a CLI existente.
+2. Identificar o arquivo e a revisão que serão analisados. Para uma comparação,
+   identificar as duas versões.
+3. Preparar o ambiente Python e executar a auditoria ou a comparação pela CLI.
 4. Disponibilizar o resumo e os arquivos de relatório para consulta.
-5. Registrar quando a análise foi dispensada ou quando a comparação não pôde
-   ser obtida.
+5. Registrar as análises dispensadas e os erros de preparação.
 
 Os caminhos iniciais monitorados serão os workflows `.yml` e `.yaml` de
 `.github/workflows/`. Scripts e actions locais poderão ser acrescentados por
@@ -50,14 +49,13 @@ das regras; ausência de alerta não é aprovação completa da pipeline.
 
 ## Entradas que exigem tratamento explícito
 
-A CLI atual exige dois workflows existentes e não vazios. Adições, exclusões e
-renomeações de arquivos precisam de uma política própria na integração. Não se
-deve substituir silenciosamente um arquivo ausente por um workflow vazio,
-porque esse arquivo não atende à entrada atual.
+`audit` exige um workflow existente e não vazio. A comparação exige dois
+arquivos válidos. A integração pode auditar um arquivo adicionado. Para
+exclusões, deverá registrar a ausência do arquivo na revisão atual. Para
+renomeações, deverá identificar os caminhos e as revisões disponíveis.
 
-Falha ao obter o diff, a revisão ou o arquivo não equivale a ausência de
-mudanças. A integração deve registrar esse erro de preparação e manter claro
-quais configurações foram efetivamente analisadas.
+A integração deve registrar falhas ao obter o diff, a revisão ou o arquivo como
+erros de preparação e indicar quais configurações foram efetivamente analisadas.
 
 ## Critérios do primeiro experimento
 

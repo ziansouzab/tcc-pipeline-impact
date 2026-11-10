@@ -1,12 +1,12 @@
 # Pipeline Impact
 
-Analisador estático de alterações em workflows do GitHub Actions. Compara duas
-configurações, explica mudanças nas dependências entre jobs e apresenta alertas e
-oportunidades de revisão acompanhados de evidências.
+Analisador estático de workflows do GitHub Actions. Audita uma configuração ou
+compara duas versões, apresentando diagnósticos, oportunidades de revisão e a
+cobertura do modelo.
 
 Desenvolvido como protótipo de um TCC em Engenharia de Software.
 
-**Ferramenta:** 0.1.0 · **Contrato JSON:** 0.2 · **Python:** 3.11 ou superior.
+**Ferramenta:** 0.2.0 · **Contrato JSON:** 0.3 · **Python:** 3.11 ou superior.
 
 ## Exemplo
 
@@ -28,10 +28,12 @@ O analisador identifica a mudança e conserva a relação de dados entre os jobs
 Na versão modificada, aponta que a precedência do produtor deixou de ser
 garantida. Esse é o [caso de desenvolvimento 03](cases/03-artefato-sem-ordem).
 
-Resultado esperado: **2 registros de mudança e 1 alerta `R02_ARTIFACT_ORDER`**.
-Os registros descrevem a dependência direta e o alcance transitivo; não são dois
-defeitos distintos. O alerta representa um risco no modelo, não a afirmação de
-que toda execução real falhará.
+Auditar `after.yml` apresenta **1 alerta `R02_ARTIFACT_ORDER`**, localizado no job
+`verify`, step 2. A posição conta os steps na lista a partir de 1. O download
+pode ocorrer antes da disponibilização do artefato.
+
+Comparar `before.yml` com `after.yml` acrescenta **2 registros de mudança** que
+descrevem a dependência direta e o alcance transitivo.
 
 ## Instalação
 
@@ -57,7 +59,27 @@ O arquivo de requisitos fixa a versão de PyYAML utilizada no desenvolvimento.
 O pacote instala a entrada `pipeline-impact`; os exemplos usam o interpretador
 do ambiente para tornar explícita a instalação utilizada.
 
-## Primeira análise
+## Auditar um workflow
+
+No PowerShell:
+
+```powershell
+.\.venv\Scripts\python.exe -m pipeline_impact audit `
+    cases/03-artefato-sem-ordem/after.yml `
+    --output reports/auditoria
+```
+
+No Linux ou macOS:
+
+```bash
+.venv/bin/python -m pipeline_impact audit \
+    cases/03-artefato-sem-ordem/after.yml \
+    --output reports/auditoria
+```
+
+A auditoria apresenta um grafo, os achados e a cobertura do workflow informado.
+
+## Comparar duas versões
 
 No PowerShell:
 
@@ -65,7 +87,7 @@ No PowerShell:
 .\.venv\Scripts\python.exe -m pipeline_impact `
     --before cases/03-artefato-sem-ordem/before.yml `
     --after cases/03-artefato-sem-ordem/after.yml `
-    --output reports/exemplo
+    --output reports/comparacao
 ```
 
 No Linux ou macOS:
@@ -74,53 +96,60 @@ No Linux ou macOS:
 .venv/bin/python -m pipeline_impact \
     --before cases/03-artefato-sem-ordem/before.yml \
     --after cases/03-artefato-sem-ordem/after.yml \
-    --output reports/exemplo
+    --output reports/comparacao
 ```
 
-A pasta de saída receberá `report.json` e `report.md`. O Markdown inclui os
-grafos em Mermaid, que precisam de um visualizador compatível. As mesmas arestas
-estão disponíveis no JSON. Os arquivos gerados permanecem fora do versionamento.
+Ambos os modos gravam `report.json` e `report.md` em `reports/latest` por padrão.
+O Markdown inclui grafos Mermaid, que precisam de um visualizador compatível.
+As mesmas arestas estão disponíveis no JSON. Os relatórios gerados permanecem
+fora do versionamento.
 
-Para consultar os argumentos, use `python -m pipeline_impact --help` com o
-interpretador do ambiente. No Windows, `demo.ps1` demonstra o caso de upload
-condicional usando o ambiente `.venv`.
+Consulte `python -m pipeline_impact --help` ou
+`python -m pipeline_impact audit --help` com o interpretador do ambiente. No
+Windows, `demo.ps1` audita o caso 03 usando o ambiente `.venv`.
 
 ## O que a versão atual analisa
 
 | Capacidade | Resultado |
 |---|---|
 | Leitura de YAML | Exige UTF-8 e conteúdo serializável em JSON; preserva `on` e verifica estruturas, dependências e ciclos |
+| Auditoria individual | Apresenta grafo, achados, cenários e cobertura de um workflow |
 | Comparação de versões | Registra mudanças em jobs, dependências, condições e propriedades acompanhadas |
 | Alcance no grafo | Identifica relações transitivas e descendentes potencialmente afetados |
 | Artefatos reconhecidos | Verifica precedência entre uploads e downloads de mesmo nome literal |
 | Condições suportadas | Procura consumo ativo com uploads anteriores pulados em cenários delimitados |
 | Revisão do paralelismo | Examina a remoção hipotética de uma dependência, considerando relações de dados reconhecidas |
 
-A análise lê configurações; não executa seus comandos ou actions. Não coleta
-histórico, não obtém versões de um PR e não gera um novo YAML nesta versão.
+A análise é estática e local. A integração com Actions, a seleção de versões
+de um PR e a coleta de histórico estão nos próximos marcos.
 
 ## Como interpretar o resultado
 
-- `changes` descreve diferenças entre as configurações.
+- `mode` identifica `audit` ou `compare`.
+- `analysis.findings` reúne os achados do workflow auditado.
+- `changes` descreve diferenças entre as configurações no modo `compare`.
 - `after.findings` reúne os diagnósticos atuais da versão modificada.
+- `location` indica o job e o step do consumo ou o campo `needs` a revisar.
 - `warning` indica inconsistência ou risco sob as premissas do modelo.
 - `opportunity` indica um ponto de revisão, com verificação experimental necessária.
-- `limitations` informa algumas restrições encontradas; uma lista vazia não
-  comprova cobertura completa.
+- `coverage` registra o escopo, a situação e os motivos de cada análise.
+- `limitations` informa restrições encontradas durante a análise.
 
-O relatório não classifica achados como novos, persistentes ou resolvidos.
-Encontrar uma diferença e um alerta na mesma comparação não comprova causalidade.
-Pares sem ordem imposta por `needs` também não comprovam paralelismo observado.
+O contrato 0.3 acrescenta modo, localização e cobertura aos campos da comparação.
+As evidências e os IDs dos achados permanecem compatíveis com o contrato 0.2.
+O Markdown explica onde está o achado, qual evidência o sustenta, sua possível
+consequência e o que revisar. Consulte os escopos de `coverage` antes de
+interpretar uma análise sem alertas.
 
 ### Códigos de saída
 
 | Código | Significado |
 |---|---|
 | `0` | Análise concluída; o modo padrão permite alertas |
-| `1` | Com `--fail-on-warning`, existe um `warning` na versão modificada |
+| `1` | Com `--fail-on-warning`, existe um `warning` no workflow auditado ou na versão modificada da comparação |
 | `2` | Erro de entrada, argumentos ou arquivo |
 
-Oportunidades não fazem `--fail-on-warning` retornar `1`. O código `0` não
+Com apenas oportunidades, o código de saída continua `0`. O código `0` não
 certifica a correção completa da pipeline.
 
 ## Desenvolvimento
@@ -128,6 +157,7 @@ certifica a correção completa da pipeline.
 ```powershell
 .\.venv\Scripts\python.exe -m unittest discover -s tests -v
 .\.venv\Scripts\python.exe scripts/run_cases.py
+.\.venv\Scripts\python.exe scripts/verify.py
 ```
 
 No Linux ou macOS, substitua o executável por `.venv/bin/python`.
@@ -158,7 +188,7 @@ scripts/              Regeneração dos casos e verificações locais
 docs/                 Documentação técnica do protótipo
 pyproject.toml        Instalação e metadados do pacote
 requirements-repro.txt
-demo.ps1              Demonstração local em PowerShell
+demo.ps1              Auditoria de exemplo em PowerShell
 ```
 
 O suporte é parcial: nomes dinâmicos de artefatos, actions personalizadas,

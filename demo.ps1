@@ -4,13 +4,10 @@ $demoPython = Join-Path $demoRoot '.venv/Scripts/python.exe'
 if (-not (Test-Path -LiteralPath $demoPython)) {
     throw 'Crie o ambiente conforme o README.md antes de executar a demonstração.'
 }
-$beforeWorkflow = Join-Path $demoRoot 'cases/05-upload-condicional/before.yml'
-$afterWorkflow = Join-Path $demoRoot 'cases/05-upload-condicional/after.yml'
-$reportDirectory = Join-Path $demoRoot 'reports/demo'
+$workflowPath = Join-Path $demoRoot 'cases/03-artefato-sem-ordem/after.yml'
+$reportDirectory = Join-Path $demoRoot 'reports/audit-demo'
 
-& $demoPython -m pipeline_impact `
-    --before $beforeWorkflow `
-    --after $afterWorkflow `
+& $demoPython -m pipeline_impact audit $workflowPath `
     --output $reportDirectory
 
 if ($LASTEXITCODE -ne 0) {

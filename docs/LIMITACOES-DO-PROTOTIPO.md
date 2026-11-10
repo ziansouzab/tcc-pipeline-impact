@@ -1,6 +1,6 @@
 # Catálogo de limitações do protótipo
 
-Atualizado em **09/11/2026**. Contrato de saída: **schema 0.2**.
+Atualizado em **10/11/2026**. Contrato de saída **schema 0.3**.
 
 Este é o registro vivo das restrições identificadas durante a leitura do código.
 Ele reúne limites técnicos, escolhas de escopo e integrações previstas. A
@@ -25,9 +25,9 @@ Comece por:
 - **LIM-030:** acompanhamento de achados deliberadamente adiado.
 - **LIM-039:** o que os testes atuais ainda não demonstram.
 
-O campo limitations dos relatórios **não contém automaticamente todos os itens
-deste documento**. Algumas restrições geram mensagens específicas; outras aparecem
-apenas nas premissas gerais; outras ainda não são sinalizadas pelo programa.
+Use `coverage` para consultar o alcance de cada análise, `limitations` para
+ler restrições detectadas e `assumptions` para conhecer as premissas gerais.
+O catálogo inclui também limites que o programa ainda não sinaliza.
 
 Fontes locais do registro:
 - [model.py](../src/pipeline_impact/model.py): leitura, normalização e grafo.
@@ -56,14 +56,16 @@ análise dessa transferência. Isso não prova que seu download esteja errado.
 
 ### LIM-002 — Somente duas actions são reconhecidas
 
-**Tipo:** cobertura limitada, parcialmente silenciosa.
+**Tipo:** reconhecimento limitado, com fronteira registrada na cobertura.
 
 O levantamento reconhece actions/upload-artifact e actions/download-artifact.
 Actions personalizadas, actions compostas e comandos run podem realizar operações
 de transferência que não interpretamos.
 
-Uma action desconhecida é ignorada por continue, sem uma mensagem específica de
-limitação. Portanto, limitations vazio não demonstra cobertura completa.
+O reconhecimento registra actions fora do seu escopo em `coverage`. O corpo
+dessas actions e os comandos `run` permanecem fora da interpretação de
+transferências. Consulte o escopo registrado mesmo quando `limitations` estiver
+vazio.
 
 **Impacto:** com upload personalizado e download oficial, podemos apontar ausência
 de produtor reconhecido mesmo quando a transferência real está organizada. Com
@@ -490,23 +492,25 @@ mudança de nome. Isso independe do acompanhamento de achados que foi adiado.
 STEP_CHANGE indica que a lista de steps mudou. Não fornece um pareamento
 individual que explique cada inserção, movimentação ou renomeação.
 
-Achados de artefatos usam a posição do step, não a linha e a coluna do YAML.
-A segunda etapa corresponde ao índice Python 1.
+`location` identifica o job consumidor e a posição do step na lista, a partir
+de 1. A segunda etapa corresponde ao índice Python 1. Em R05, `location`
+identifica o job dependente e seu campo `needs`.
 
 **Impacto:** a localização ajuda a encontrar a etapa, mas não é uma referência
 exata ao texto original nem uma identidade histórica.
 
-**Referência:** analyzer.py, compare(), artifact_steps() e evidence.
+**Referência:** analyzer.py, compare(), snapshot(), finding() e location.
 
 ### LIM-030 — Acompanhamento de achados adiado
 
 **Tipo:** decisão de escopo, não defeito a corrigir automaticamente.
 
-O schema 0.2 não contém lifecycle nem resolved_findings. Apresentamos os achados
-atuais, sem classificá-los como novos, preexistentes ou resolvidos.
+O schema 0.3 apresenta os achados atuais. A classificação em novos,
+preexistentes ou resolvidos permanece adiada.
 
-O hash de finding() usa evidências que podem mudar com a posição. Ele serve como
-referência técnica, sem promessa de continuidade entre versões.
+O hash de `finding()` usa evidências que podem mudar com a posição. Os campos
+`location` e `coverage` ficam fora do cálculo. O ID serve como referência
+técnica do achado na configuração analisada.
 
 **Impacto:** o mesmo problema pode ser apontado novamente. Não informamos que uma
 ocorrência histórica persistiu ou foi resolvida. Essa capacidade foi adiada
@@ -518,8 +522,9 @@ explicitamente, em vez de manter uma classificação imprecisa.
 
 **Tipo:** limite das conclusões.
 
-changes descreve diferenças da configuração; affected_jobs reúne descendentes
-potencialmente afetados. after.findings descreve o diagnóstico atual.
+Na comparação, `changes` descreve diferenças da configuração, `affected_jobs`
+reúne descendentes potencialmente afetados e `after.findings` traz o diagnóstico
+atual. A auditoria apresenta `analysis.findings` para o arquivo fornecido.
 
 **Impacto:** não podemos dizer que cada alerta atual foi causado pela alteração,
 nem que todo descendente teve seu comportamento efetivamente prejudicado.
@@ -560,14 +565,15 @@ A recomendação exige revisão e verificação experimental.
 
 **Tipo:** conservadorismo e cobertura parcial.
 
-Job não resolvido, limitação de seletor de artefato ou concurrency suspendem todas
-as sugestões. Entretanto, uma action desconhecida ignorada silenciosamente não
-aciona essas guardas.
+Job não resolvido, limitação de seletor de artefato ou `concurrency` suspendem
+as sugestões. A cobertura de R05 registra os motivos da suspensão. Actions
+fora do reconhecimento aparecem como fronteira em `coverage` e, sozinhas,
+permitem que a verificação estrutural prossiga.
 
 Limitações de condições também não entram diretamente em can_review_parallelism.
 
-**Impacto:** uma análise pode ser suspensa amplamente em alguns casos e continuar
-com desconhecimento em outros. limitations vazio não é uma medida de cobertura.
+**Impacto:** as sugestões dependem das relações reconhecidas e das guardas
+implementadas. Consulte `coverage` para verificar escopo, situação e motivos.
 
 **Referência:** analyzer.py, snapshot(), can_review_parallelism.
 
@@ -577,11 +583,12 @@ com desconhecimento em outros. limitations vazio não é uma medida de cobertura
 
 **Tipo:** estágio da implementação.
 
-A CLI recebe dois arquivos locais. Não obtém automaticamente a base do PR, os
-YAMLs por SHA/ref Git ou os arquivos pela API. Não há uma API HTTP implementada.
+A CLI recebe um arquivo local em `audit` e dois na comparação. Obter a base de
+um PR, ler YAML por SHA ou referência Git e fornecer um serviço HTTP permanecem
+como extensões futuras.
 
-**Impacto:** o ambiente precisa fornecer as duas versões para a comparação.
-A CLI é uma escolha de entrada; não ter HTTP não é defeito do núcleo.
+**Impacto:** o usuário ou a integração deve fornecer o caminho da configuração
+auditada e, para comparar, também o caminho da versão anterior.
 
 **Referência:** cli.py, main(); model.py, load(); próximos passos.
 
@@ -621,9 +628,10 @@ barreira de ordenação, não com executar o próprio YAML.
 
 **Tipo:** contrato de uso.
 
-O padrão 0 significa análise concluída. Com --fail-on-warning, qualquer warning
-da versão modificada retorna 1. Erros de entrada/arquivo retornam 2.
-Oportunidades não fazem essa opção falhar.
+O padrão `0` significa análise concluída. Com `--fail-on-warning`, um `warning`
+no workflow auditado ou na versão modificada da comparação retorna `1`.
+Com apenas oportunidades, o retorno é `0`. Erros de argumentos, entrada ou arquivo
+retornam `2`.
 
 **Impacto:** cobertura parcial pode produzir tanto silêncio indevido quanto um
 alerta por produtor não reconhecido. Escolher bloquear a CI por qualquer warning

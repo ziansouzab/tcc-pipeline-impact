@@ -30,9 +30,9 @@ No Linux ou macOS:
 .venv/bin/python -m unittest discover -s tests -v
 ```
 
-Os testes são organizados por responsabilidade: modelo, condições, análise, CLI
-e expectativas dos casos de desenvolvimento. Os auxiliares compartilhados ficam
-em `tests/helpers.py`.
+A suíte cobre modelo, condições, análise, relatórios, CLI e expectativas dos
+casos de desenvolvimento. Os auxiliares compartilhados ficam em
+`tests/helpers.py`.
 
 Ao alterar o parser, examine tanto entradas válidas quanto erros de tipo,
 dependências e ciclos. Ao alterar condições, confira resultados determinados,
@@ -76,10 +76,13 @@ incluindo `development-results.json`. Ele não executa os comandos dos workflows
 ```
 
 O script reúne a suíte, a conferência de dependências, os relatórios dos casos e
-uma demonstração da CLI. Grava `verification.json` com os comandos, os resultados
-e hashes dos arquivos-fonte. O registro é gerado localmente e não é publicado no
-repositório. Resultado local positivo não certifica execução no GitHub nem
-eficácia da pesquisa.
+as demonstrações de auditoria e comparação pela CLI. Grava `verification.json`
+com os comandos, os resultados e hashes dos arquivos-fonte. O registro fica
+na máquina local, fora do Git. As verificações cobrem a implementação local.
+
+Execute `./demo.ps1` no PowerShell para auditar `after.yml` do caso 03. O script
+usa o Python de `.venv` e grava os relatórios em `reports/audit-demo`. O caso
+produz um alerta R02 e retorna `0` no modo padrão.
 
 ### Regenerar os casos
 
