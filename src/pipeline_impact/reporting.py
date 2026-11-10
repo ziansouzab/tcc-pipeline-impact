@@ -1,7 +1,20 @@
 from __future__ import annotations
 
 import html
-import json
+
+
+COVERAGE_NAMES = {
+    "artifact_recognition": "Reconhecimento de artefatos",
+    "R02_ARTIFACT_ORDER": "Precedência de artefatos",
+    "R03_ARTIFACT_CONDITION": "Condições de artefatos",
+    "R05_PARALLEL_REVIEW": "Revisão de paralelismo",
+}
+COVERAGE_STATES = {
+    "executed": "Executada",
+    "partial": "Parcial",
+    "suspended": "Suspensa",
+    "not_applicable": "Não aplicável",
+}
 
 
 def diagram(model: dict) -> str:
@@ -28,10 +41,45 @@ def safe_cell(value) -> str:
     text = str(value)
     text = text.replace("\n", " ")
     text = text.replace("\r", " ")
-    text = text.replace("|", "&#124;")
     text = html.escape(text, quote=False)
-    text = text.replace("&amp;#124;", "&#124;")
+
+    markdown_characters = ("#", "\\", "`", "*", "_", "[", "]", "(", ")", "~", "|", "!", "@")
+    for character in markdown_characters:
+        code_point = ord(character)
+        text = text.replace(character, f"&#{code_point};")
+
+    text = text.replace("://", "&#58;//")
+    text = text.replace("www.", "www&#46;")
     return text
+
+
+def inline_code(value) -> str:
+    text = str(value)
+    text = text.replace("\r", " ")
+    text = text.replace("\n", " ")
+    longest_run = 0
+    current_run = 0
+
+    for character in text:
+        if character == "`":
+            current_run += 1
+            if current_run > longest_run:
+                longest_run = current_run
+        else:
+            current_run = 0
+
+    delimiter = "`" * (longest_run + 1)
+    if text.startswith(("`", " ")) or text.endswith(("`", " ")):
+        return f"{delimiter} {text} {delimiter}"
+
+    return f"{delimiter}{text}{delimiter}"
+
+
+def names_as_code(names: list[str]) -> str:
+    labels = []
+    for name in names:
+        labels.append(inline_code(name))
+    return ", ".join(labels)
 
 
 def comparison_lines(report: dict) -> list[str]:
@@ -80,12 +128,12 @@ def comparison_lines(report: dict) -> list[str]:
             affected_jobs = "—"
 
         cell_values = [
-            change["rule"],
             change.get("job", "workflow"),
             evidence,
             affected_jobs,
         ]
-        safe_values = []
+        rule_code = change["rule"].replace("|", "\\|")
+        safe_values = [inline_code(rule_code)]
         for cell_value in cell_values:
             safe_values.append(safe_cell(cell_value))
 
@@ -101,7 +149,7 @@ def comparison_lines(report: dict) -> list[str]:
 def audit_lines(report: dict) -> list[str]:
     analysis = report["analysis"]
     workflow_diagram = diagram(analysis)
-    source = safe_cell(analysis["source"])
+    source = inline_code(analysis["source"])
     warnings = report["summary"].get("warning", 0)
     opportunities = report["summary"].get("opportunity", 0)
 
@@ -110,7 +158,7 @@ def audit_lines(report: dict) -> list[str]:
         "",
         f"Protótipo {report['tool_version']} — resultado estático, sujeito às premissas abaixo.",
         "",
-        f"Arquivo: {source}.",
+        f"Arquivo {source}.",
         "",
         f"Alertas: **{warnings}**. Oportunidades de revisão: **{opportunities}**.",
         "",
@@ -123,54 +171,218 @@ def audit_lines(report: dict) -> list[str]:
     return lines
 
 
+def location_text(location: dict) -> str:
+    description = f"job {inline_code(location['job'])}"
+    if "step" in location:
+        description += f", step {inline_code(location['step'])} (posição na lista)"
+    if "field" in location:
+        description += f", campo {inline_code(location['field'])}"
+    return description
+
+
+def context_text(context: dict) -> str:
+    parts = []
+    for key, value in context.items():
+        key_text = inline_code(key)
+        value_text = inline_code(value)
+        parts.append(f"{key_text} = {value_text}")
+    return ", ".join(parts)
+
+
+def finding_explanation(finding: dict) -> tuple[str, str, str]:
+    rule = finding["rule"]
+    evidence = finding["evidence"]
+
+    if rule == "R02_ARTIFACT_ORDER":
+        title = "Consumo de artefato sem precedência garantida"
+        artifact = inline_code(finding["artifact"])
+        producers = evidence["producer_jobs"]
+
+        if producers:
+            producer_names = names_as_code(producers)
+            explanation = (
+                f"O download de {artifact} tem uploads reconhecidos nos jobs {producer_names}. "
+                "A análise de precedência não identificou um upload garantido antes desse download."
+            )
+        else:
+            explanation = (
+                f"O download de {artifact} tem zero uploads com o mesmo nome "
+                "entre as actions de artefato reconhecidas."
+            )
+
+        consequence = "O download pode ocorrer antes de o artefato estar disponível."
+        return title, explanation, consequence
+
+    if rule == "R03_ARTIFACT_CONDITION":
+        title = "Consumo ativo com uploads anteriores desativados"
+        artifact = inline_code(finding["artifact"])
+        producer_steps = []
+        for producer in evidence["producer_steps"]:
+            producer_steps.append(location_text(producer))
+
+        producer_text = ", ".join(producer_steps)
+        explanation = (
+            f"O download de {artifact} está ativo no cenário modelado. "
+            f"Os uploads anteriores reconhecidos ficam desativados em {producer_text}."
+        )
+        consequence = "O download pode ficar sem o artefato nesse cenário."
+        return title, explanation, consequence
+
+    if rule == "R05_PARALLEL_REVIEW":
+        title = "Dependência a revisar para possível paralelismo"
+        source, target = evidence["edge"]
+        source_name = inline_code(source)
+        target_name = inline_code(target)
+        explanation = (
+            f"O job {target_name} declara {source_name} em `needs`. "
+            "O teste estrutural indica que retirar a aresta altera a ordem "
+            "e preserva as relações de dados reconhecidas."
+        )
+        consequence = "A revisão da dependência pode abrir uma oportunidade de paralelismo."
+        return title, explanation, consequence
+
+    return safe_cell(rule), safe_cell(evidence["reason"]), ""
+
+
 def finding_lines(findings: list[dict]) -> list[str]:
     lines = []
 
     if not findings:
-        lines.append(
-            "Nenhum achado pelas regras implementadas. Isso não comprova ausência de problemas."
-        )
+        lines.append("Nenhum achado pelas regras implementadas no escopo analisado.")
 
     for current_finding in findings:
-        rule = current_finding["rule"]
+        rule = inline_code(current_finding["rule"])
+        title, explanation, consequence = finding_explanation(current_finding)
         kind = current_finding["kind"]
-        job_names = ", ".join(current_finding["jobs"])
-        safe_job_names = safe_cell(job_names)
-        reason = safe_cell(current_finding["evidence"]["reason"])
+        if kind == "warning":
+            kind = "Alerta"
+        elif kind == "opportunity":
+            kind = "Oportunidade de revisão"
+        else:
+            kind = safe_cell(kind)
 
-        lines.extend([
-            f"### {rule} · {kind}",
-            "",
-            f"Jobs: {safe_job_names}.",
-            "",
-            reason,
-            "",
-        ])
+        lines.extend([f"### {title} ({rule})", "", kind, ""])
 
-        if current_finding["artifact"]:
-            artifact_name = safe_cell(current_finding["artifact"])
-            lines.extend([f"Artefato: {artifact_name}.", ""])
+        location = current_finding.get("location")
+        if location:
+            where = location_text(location)
+            lines.extend([f"**Onde** {where}.", ""])
+        else:
+            job_names = names_as_code(current_finding["jobs"])
+            lines.extend([f"**Jobs envolvidos** {job_names}.", ""])
+            consumer_step = current_finding["evidence"].get("consumer_step")
+            if consumer_step is not None:
+                step = inline_code(consumer_step)
+                lines.extend([f"O step consumidor ocupa a posição {step} na sua lista.", ""])
 
-        if current_finding["context"]:
-            context_text = json.dumps(
-                current_finding["context"],
-                ensure_ascii=False,
-            )
-            safe_context = safe_cell(context_text)
-            lines.extend([f"Contexto: {safe_context}.", ""])
+        lines.extend([f"**Evidência** {explanation}", ""])
+        if consequence:
+            lines.extend([f"**Consequência possível** {consequence}", ""])
 
-        details = {}
-        for key, value in current_finding["evidence"].items():
-            if key != "reason":
-                details[key] = value
-
-        details_text = json.dumps(details, ensure_ascii=False)
-        safe_details = safe_cell(details_text)
-        lines.extend([f"Evidência: {safe_details}.", ""])
+        context = current_finding["context"]
+        if context:
+            modeled_context = context_text(context)
+            lines.extend([f"**Contexto modelado** {modeled_context}.", ""])
+        else:
+            lines.extend(["**Contexto** análise da estrutura do workflow.", ""])
 
         if current_finding["suggestion"]:
-            suggestion_text = safe_cell(current_finding["suggestion"])
-            lines.extend([suggestion_text, ""])
+            suggestion = safe_cell(current_finding["suggestion"])
+            lines.extend([f"**Revisão sugerida** {suggestion}", ""])
+
+    return lines
+
+
+def coverage_detail_line(detail: dict) -> str:
+    description = safe_cell(detail["message"])
+    qualifiers = []
+
+    location = detail.get("location")
+    if location:
+        qualifiers.append(location_text(location))
+
+    context = detail.get("context")
+    if context:
+        qualifiers.append(context_text(context))
+
+    edge = detail.get("edge")
+    if edge:
+        source, target = edge
+        source_name = inline_code(source)
+        target_name = inline_code(target)
+        qualifiers.append(f"dependência {source_name} → {target_name}")
+
+    protected_relation = detail.get("protected_relation")
+    if protected_relation:
+        producer, consumer = protected_relation
+        producer_name = inline_code(producer)
+        consumer_name = inline_code(consumer)
+        qualifiers.append(f"relação protegida {producer_name} → {consumer_name}")
+
+    action = detail.get("action")
+    if action:
+        action_name = inline_code(action)
+        qualifiers.append(f"action {action_name}")
+
+    artifact = detail.get("artifact")
+    if artifact:
+        artifact_name = inline_code(artifact)
+        qualifiers.append(f"artefato {artifact_name}")
+
+    if qualifiers:
+        qualifier_text = ", ".join(qualifiers)
+        return f"- {description} ({qualifier_text})"
+
+    return f"- {description}"
+
+
+def coverage_lines(snapshots: list[tuple[str, dict]]) -> list[str]:
+    lines = []
+    coverage_started = False
+
+    for label, analysis in snapshots:
+        coverage = analysis.get("coverage")
+        if not coverage:
+            continue
+
+        if not coverage_started:
+            lines.extend(["", "## Cobertura da análise", ""])
+            coverage_started = True
+
+        if len(snapshots) > 1:
+            lines.extend([f"### Cobertura {label.lower()}", ""])
+
+        lines.extend([
+            "| Análise | Situação | Escopo | Motivos |",
+            "|---|---|---|---|",
+        ])
+        detail_lines = []
+
+        for record in coverage:
+            name = COVERAGE_NAMES.get(record["analysis"], record["analysis"])
+            state = COVERAGE_STATES.get(record["status"], record["status"])
+            reasons = " / ".join(record["reasons"])
+            if not reasons:
+                reasons = "—"
+
+            values = [name, state, record["scope"], reasons]
+            safe_values = []
+            for value in values:
+                safe_values.append(safe_cell(value))
+            row = "| " + " | ".join(safe_values) + " |"
+            lines.append(row)
+
+            if record["details"]:
+                detail_lines.extend([f"**{safe_cell(name)}**", ""])
+                for detail in record["details"]:
+                    detail_lines.append(coverage_detail_line(detail))
+                detail_lines.append("")
+
+        lines.append("")
+        if detail_lines:
+            lines.extend(["<details>", "<summary>Detalhes da cobertura</summary>", ""])
+            lines.extend(detail_lines)
+            lines.extend(["</details>", ""])
 
     return lines
 
@@ -181,10 +393,19 @@ def unordered_pair_lines(analysis: dict) -> list[str]:
         "",
         "## Pares sem ordem imposta por needs",
         "",
-        safe_cell(unordered_pairs),
+        f"Pares identificados **{len(unordered_pairs)}**.",
         "",
-        "Não equivale a paralelismo observado nem a economia potencial.",
     ]
+
+    for first_job, second_job in unordered_pairs:
+        first_name = inline_code(first_job)
+        second_name = inline_code(second_job)
+        lines.append(f"- {first_name} e {second_name}")
+
+    lines.extend([
+        "",
+        "Esses pares descrevem a ordem estrutural do grafo.",
+    ])
     return lines
 
 
@@ -196,7 +417,7 @@ def assumption_lines(report: dict, snapshots: list[tuple[str, dict]]) -> list[st
 
     for label, analysis in snapshots:
         for limitation in analysis["limitations"]:
-            lines.append(f"- {label}: {safe_cell(limitation)}")
+            lines.append(f"- **{label}** {safe_cell(limitation)}")
 
     return lines
 
@@ -220,6 +441,7 @@ def markdown(report: dict) -> str:
 
     lines.extend(["", findings_title, ""])
     lines.extend(finding_lines(analysis["findings"]))
+    lines.extend(coverage_lines(snapshots))
     lines.extend(unordered_pair_lines(analysis))
     lines.extend(assumption_lines(report, snapshots))
 

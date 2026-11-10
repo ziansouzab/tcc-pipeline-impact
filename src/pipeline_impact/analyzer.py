@@ -21,7 +21,17 @@ OUTPUT_REF = re.compile(
 )
 
 
-def finding(rule, kind, jobs, evidence, *, artifact=None, context=None, suggestion=None):
+def finding(
+    rule,
+    kind,
+    jobs,
+    evidence,
+    *,
+    artifact=None,
+    context=None,
+    suggestion=None,
+    location=None,
+):
     identifier_data = {
         "rule": rule,
         "jobs": jobs,
@@ -43,27 +53,72 @@ def finding(rule, kind, jobs, evidence, *, artifact=None, context=None, suggesti
         "context": context,
         "evidence": evidence,
         "suggestion": suggestion,
+        "location": location,
     }
 
 
-def artifact_steps(workflow):
+def coverage_detail(result, message, *, location=None, context=None):
+    detail = {"result": result, "message": message}
+    if location is not None:
+        detail["location"] = location
+    if context is not None:
+        detail["context"] = context
+    return detail
+
+
+def coverage_entry(analysis, scope, status, reasons, details):
+    return {
+        "analysis": analysis,
+        "scope": scope,
+        "status": status,
+        "reasons": reasons,
+        "details": details,
+    }
+
+
+def artifact_steps(workflow, observations=None):
     uploads = []
     downloads = []
     limitations = []
 
+    if observations is None:
+        observations = []
+
     for job, data in workflow.jobs.items():
         if workflow.unresolved_job(job):
+            observations.append(coverage_detail(
+                "unresolved_job",
+                "O reconhecimento de artefatos não examina os steps deste job.",
+                location={"job": job},
+            ))
             continue
 
         for index, step in enumerate(data["steps"]):
-            uses = step.get("uses", "")
+            if "uses" not in step:
+                continue
+
+            location = {"job": job, "step": index + 1}
+            uses = step["uses"]
             if not isinstance(uses, str):
+                observations.append(coverage_detail(
+                    "invalid_action_reference",
+                    "A referência à action não é um texto.",
+                    location=location,
+                ))
                 continue
 
             action_parts = uses.split("@")
             action = action_parts[0].lower()
             supported_actions = ("actions/upload-artifact", "actions/download-artifact")
             if action not in supported_actions:
+                observation = coverage_detail(
+                    "unrecognized_action",
+                    "Esta action está fora do reconhecimento de transferências de artefatos.",
+                    location=location,
+                )
+                if re.fullmatch(r"(?:[A-Za-z0-9_.-]+/)+[A-Za-z0-9_.-]+", action):
+                    observation["action"] = action
+                observations.append(observation)
                 continue
 
             params = step.get("with", {})
@@ -92,6 +147,11 @@ def artifact_steps(workflow):
                 limitations.append(
                     f"Job {job}, step {index + 1}: seletor de artefato dinâmico, múltiplo ou externo."
                 )
+                observations.append(coverage_detail(
+                    "unsupported_selector",
+                    "O seletor está fora do modelo de nomes literais individuais.",
+                    location=location,
+                ))
                 continue
 
             record = {
@@ -103,8 +163,21 @@ def artifact_steps(workflow):
 
             if is_upload:
                 uploads.append(record)
+                observation = coverage_detail(
+                    "recognized_upload",
+                    "Upload reconhecido pelo nome literal do artefato.",
+                    location=location,
+                )
             else:
                 downloads.append(record)
+                observation = coverage_detail(
+                    "recognized_download",
+                    "Download reconhecido pelo nome literal do artefato.",
+                    location=location,
+                )
+
+            observation["artifact"] = name
+            observations.append(observation)
 
     return uploads, downloads, limitations
 
@@ -118,12 +191,36 @@ def precedes(workflow, producer, consumer):
 
 
 def snapshot(workflow: Workflow) -> dict:
-    uploads, downloads, artifact_limits = artifact_steps(workflow)
+    artifact_observations = []
+    uploads, downloads, artifact_limits = artifact_steps(workflow, artifact_observations)
     limits = list(workflow.limitations)
     limits.extend(artifact_limits)
     findings = []
     data_pairs = set()
     supported_contexts = []
+    coverage = []
+    artifact_scan_incomplete = False
+    recognition_status = "executed"
+    recognition_reasons = ["A leitura examina as actions oficiais de upload e download por nome literal."]
+
+    for observation in artifact_observations:
+        result = observation["result"]
+        if result == "unrecognized_action":
+            recognition_status = "partial"
+        elif result in ("unresolved_job", "unsupported_selector", "invalid_action_reference"):
+            recognition_status = "partial"
+            artifact_scan_incomplete = True
+
+    if recognition_status == "partial":
+        recognition_reasons.append("Há jobs, actions ou seletores fora do reconhecimento.")
+
+    coverage.append(coverage_entry(
+        "artifact_recognition",
+        "Transferências por actions oficiais e nomes literais individuais.",
+        recognition_status,
+        recognition_reasons,
+        artifact_observations,
+    ))
 
 
     by_lower = {}
@@ -144,7 +241,10 @@ def snapshot(workflow: Workflow) -> dict:
             unresolved_jobs.add(job)
 
 
+    order_details = []
+    checked_consumer_order = False
     for consumer in downloads:
+        location = {"job": consumer["job"], "step": consumer["step"] + 1}
         producers = []
         for producer in uploads:
             if producer["name"] == consumer["name"]:
@@ -161,10 +261,21 @@ def snapshot(workflow: Workflow) -> dict:
         if consumer["job"] in unresolved_jobs:
             continue
         if workflow.jobs[consumer["job"]]["if"] == "false":
+            order_details.append(coverage_detail(
+                "consumer_skipped",
+                "A condição literal false do job exclui o consumidor desta verificação.",
+                location=location,
+            ))
             continue
         if consumer["condition"] == "false":
+            order_details.append(coverage_detail(
+                "consumer_skipped",
+                "A condição literal false do step exclui o consumidor desta verificação.",
+                location=location,
+            ))
             continue
 
+        checked_consumer_order = True
         if not ordered_producers:
             involved_jobs = {consumer["job"]}
             producer_jobs = set()
@@ -184,10 +295,40 @@ def snapshot(workflow: Workflow) -> dict:
                 evidence,
                 artifact=consumer["name"],
                 suggestion="Verificar o produtor, o nome do artefato e a ordem necessária antes do download.",
+                location=location,
             )
             findings.append(artifact_finding)
+            order_details.append(coverage_detail(
+                "warning",
+                "O consumidor não tem upload reconhecido com precedência garantida.",
+                location=location,
+            ))
+        else:
+            order_details.append(coverage_detail(
+                "ordered",
+                "Há pelo menos um upload reconhecido com precedência estrutural.",
+                location=location,
+            ))
 
+    order_status = "executed"
+    order_reasons = ["A precedência foi examinada para os consumidores incluídos no modelo."]
+    if artifact_scan_incomplete:
+        order_status = "partial"
+        order_reasons = ["A verificação usa as relações que o reconhecimento de artefatos conseguiu representar."]
+    elif not checked_consumer_order:
+        order_status = "not_applicable"
+        order_reasons = ["Não há consumidores reconhecidos sujeitos à verificação de ordem."]
 
+    coverage.append(coverage_entry(
+        "R02_ARTIFACT_ORDER",
+        "Precedência entre uploads e downloads reconhecidos.",
+        order_status,
+        order_reasons,
+        order_details,
+    ))
+
+    condition_details = []
+    condition_analysis_partial = artifact_scan_incomplete
     triggers = workflow.raw["on"]
     if isinstance(triggers, (dict, list)):
         events = set(triggers)
@@ -210,10 +351,43 @@ def snapshot(workflow: Workflow) -> dict:
             supported_contexts.append(context)
             active_steps, state_limits = states(workflow, context)
             limits.extend(state_limits)
+            condition_details.append(coverage_detail(
+                "context_examined",
+                "Estados de steps avaliados no cenário predefinido.",
+                context=context,
+            ))
+
+            if state_limits:
+                condition_analysis_partial = True
+                condition_details.append(coverage_detail(
+                    "unsupported_condition",
+                    "Há expressões fora do subconjunto interpretado.",
+                    context=context,
+                ))
+
+            for step_key, step_state in active_steps.items():
+                if step_state is None:
+                    condition_analysis_partial = True
+                    job, index = step_key
+                    condition_details.append(coverage_detail(
+                        "indeterminate_step",
+                        "O estado deste step ficou indeterminado no cenário.",
+                        location={"job": job, "step": index + 1},
+                        context=context,
+                    ))
 
             for consumer in downloads:
                 consumer_key = (consumer["job"], consumer["step"])
-                if active_steps.get(consumer_key) is not True:
+                location = {"job": consumer["job"], "step": consumer["step"] + 1}
+                consumer_state = active_steps.get(consumer_key)
+                if consumer_state is not True:
+                    if consumer_state is False:
+                        condition_details.append(coverage_detail(
+                            "consumer_skipped",
+                            "O consumidor está desativado no cenário modelado.",
+                            location=location,
+                            context=context,
+                        ))
                     continue
 
                 ordered_producers = []
@@ -223,7 +397,12 @@ def snapshot(workflow: Workflow) -> dict:
                             ordered_producers.append(producer)
 
                 if not ordered_producers:
-
+                    condition_details.append(coverage_detail(
+                        "no_ordered_producer",
+                        "A verificação condicional requer um upload reconhecido com precedência estrutural.",
+                        location=location,
+                        context=context,
+                    ))
                     continue
 
                 producer_states = []
@@ -260,12 +439,43 @@ def snapshot(workflow: Workflow) -> dict:
                         artifact=consumer["name"],
                         context=context,
                         suggestion="Alinhar as condições de produção e consumo, ou definir consumo opcional explicitamente.",
+                        location=location,
                     )
                     findings.append(condition_finding)
                 elif True not in producer_states:
+                    condition_analysis_partial = True
                     limits.append(
                         f"Artefato {consumer['name']}: disponibilidade indeterminada no contexto {context}."
                     )
+                    condition_details.append(coverage_detail(
+                        "producer_indeterminate",
+                        "A disponibilidade modelada do artefato ficou indeterminada.",
+                        location=location,
+                        context=context,
+                    ))
+
+    condition_status = "executed"
+    condition_reasons = ["Os cenários compatíveis foram examinados sob a premissa de sucesso."]
+    if filtered_events:
+        condition_status = "suspended"
+        condition_reasons = ["A configuração de eventos inclui filtros ou parâmetros fora dos cenários suportados."]
+    elif not supported_contexts:
+        condition_status = "suspended"
+        condition_reasons = ["Nenhum cenário predefinido é compatível com os eventos declarados."]
+    elif condition_analysis_partial:
+        condition_status = "partial"
+        condition_reasons = ["Há estados, condições ou relações de artefatos que o modelo não conseguiu representar."]
+    elif not downloads:
+        condition_status = "not_applicable"
+        condition_reasons = ["Os estados foram calculados, mas não há consumidores de artefatos reconhecidos."]
+
+    coverage.append(coverage_entry(
+        "R03_ARTIFACT_CONDITION",
+        "Disponibilidade modelada de artefatos nos cenários predefinidos.",
+        condition_status,
+        condition_reasons,
+        condition_details,
+    ))
 
     has_concurrency = "concurrency" in workflow.raw
     if not has_concurrency:
@@ -276,12 +486,18 @@ def snapshot(workflow: Workflow) -> dict:
 
 
     can_review_parallelism = True
+    parallel_reasons = []
+    parallel_details = []
     if unresolved_jobs:
         can_review_parallelism = False
+        job_names = ", ".join(sorted(unresolved_jobs))
+        parallel_reasons.append(f"Jobs fora do modelo: {job_names}.")
     if artifact_limits:
         can_review_parallelism = False
+        parallel_reasons.append("Há seletores de artefatos fora do modelo.")
     if has_concurrency:
         can_review_parallelism = False
+        parallel_reasons.append("A presença de concurrency suspende a revisão de dependências.")
 
     if can_review_parallelism:
         for source, target in sorted(workflow.edges):
@@ -290,11 +506,16 @@ def snapshot(workflow: Workflow) -> dict:
 
             remaining_ancestors = workflow.ancestors(target, edges_without_dependency)
             if source in remaining_ancestors:
-
+                detail = coverage_detail(
+                    "order_preserved",
+                    "Outro caminho mantém a mesma ordem após a remoção hipotética.",
+                )
+                detail["edge"] = [source, target]
+                parallel_details.append(detail)
                 continue
 
             breaks_data_relation = False
-            for producer_job, consumer_job in data_pairs:
+            for producer_job, consumer_job in sorted(data_pairs):
                 if producer_job not in workflow.jobs:
                     continue
                 if consumer_job not in workflow.jobs:
@@ -312,6 +533,13 @@ def snapshot(workflow: Workflow) -> dict:
                 )
                 if producer_job not in modified_ancestors:
                     breaks_data_relation = True
+                    detail = coverage_detail(
+                        "data_relation_protected",
+                        "A remoção rompe a precedência de uma relação de dados reconhecida.",
+                    )
+                    detail["edge"] = [source, target]
+                    detail["protected_relation"] = [producer_job, consumer_job]
+                    parallel_details.append(detail)
                     break
 
             if breaks_data_relation:
@@ -327,9 +555,32 @@ def snapshot(workflow: Workflow) -> dict:
                 [source, target],
                 evidence,
                 suggestion="Revisar possível paralelismo. Confirmar efeitos externos, recursos compartilhados e proteção contra falhas antes de remover a dependência.",
+                location={"job": target, "field": "needs"},
             )
             findings.append(parallel_finding)
+            detail = coverage_detail(
+                "review_suggested",
+                "A remoção mudaria a ordem e preservaria as precedências das relações de dados reconhecidas.",
+            )
+            detail["edge"] = [source, target]
+            parallel_details.append(detail)
 
+    if not can_review_parallelism:
+        parallel_status = "suspended"
+    elif not parallel_details:
+        parallel_status = "not_applicable"
+        parallel_reasons.append("Não há dependências diretas a examinar.")
+    else:
+        parallel_status = "executed"
+        parallel_reasons.append("As dependências diretas foram examinadas uma por vez.")
+
+    coverage.append(coverage_entry(
+        "R05_PARALLEL_REVIEW",
+        "Remoção hipotética de arestas e precedência das relações de dados reconhecidas.",
+        parallel_status,
+        parallel_reasons,
+        parallel_details,
+    ))
 
     eligible_pairs = []
     for first_job, second_job in combinations(sorted(workflow.jobs), 2):
@@ -360,6 +611,7 @@ def snapshot(workflow: Workflow) -> dict:
         "contexts_checked": supported_contexts,
         "findings": findings,
         "limitations": sorted(set(limits)),
+        "coverage": coverage,
     }
 
 
