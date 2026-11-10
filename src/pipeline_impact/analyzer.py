@@ -5,10 +5,12 @@ from itertools import combinations
 import json
 import re
 
+from . import __version__
 from .conditions import states
 from .model import Workflow
 
 
+SCHEMA_VERSION = "0.3"
 CONTEXTS = [
     {"github.event_name": "push", "github.ref": "refs/heads/main"},
     {"github.event_name": "push", "github.ref": "refs/heads/feature"},
@@ -361,6 +363,35 @@ def snapshot(workflow: Workflow) -> dict:
     }
 
 
+def analysis_assumptions():
+    return [
+        "Análise estática experimental; nenhum comando ou action foi executado.",
+        "Condições verificadas somente nos contextos listados, supondo sucesso dos comandos/actions executados, sem falhas ou cancelamento.",
+        "Upload executado não garante existência de arquivos; produtores alternativos e dependências externas podem não estar representados.",
+        "Pares sem ordem estrutural não comprovam independência nem paralelismo observado.",
+        "Oportunidades exigem revisão e execução experimental; não há estimativa de economia ou garantia de segurança.",
+        "Sem histórico de execução nesta versão; nenhuma conclusão de eficácia da pesquisa foi medida.",
+    ]
+
+
+def audit(workflow: Workflow) -> dict:
+    analysis = snapshot(workflow)
+    summary = {"warning": 0, "opportunity": 0}
+
+    for current_finding in analysis["findings"]:
+        kind = current_finding["kind"]
+        summary[kind] += 1
+
+    return {
+        "schema_version": SCHEMA_VERSION,
+        "tool_version": __version__,
+        "mode": "audit",
+        "analysis": analysis,
+        "summary": summary,
+        "assumptions": analysis_assumptions(),
+    }
+
+
 def compare(before: Workflow, after: Workflow) -> dict:
     changes = []
 
@@ -479,18 +510,12 @@ def compare(before: Workflow, after: Workflow) -> dict:
         summary[kind] += 1
 
     return {
-        "schema_version": "0.2",
-        "tool_version": "0.1.0",
+        "schema_version": SCHEMA_VERSION,
+        "tool_version": __version__,
+        "mode": "compare",
         "before": before_snapshot,
         "after": after_snapshot,
         "changes": changes,
         "summary": summary,
-        "assumptions": [
-            "Análise estática experimental; nenhum comando ou action foi executado.",
-            "Condições verificadas somente nos contextos listados, supondo sucesso dos comandos/actions executados, sem falhas ou cancelamento.",
-            "Upload executado não garante existência de arquivos; produtores alternativos e dependências externas podem não estar representados.",
-            "Pares sem ordem estrutural não comprovam independência nem paralelismo observado.",
-            "Oportunidades exigem revisão e execução experimental; não há estimativa de economia ou garantia de segurança.",
-            "Sem histórico de execução nesta versão; nenhuma conclusão de eficácia da pesquisa foi medida.",
-        ],
+        "assumptions": analysis_assumptions(),
     }
