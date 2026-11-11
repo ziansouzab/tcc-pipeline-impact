@@ -14,6 +14,8 @@ dist/
 !/docs/LIMITACOES-DO-PROTOTIPO.md
 !/docs/DESENVOLVIMENTO.md
 !/docs/PROXIMOS-PASSOS.md
+!/docs/PILOTO-AUDITORIA.md
+!/docs/PROTOCOLO-AVALIACAO.md
 /reports/
 /output/
 /verification.json

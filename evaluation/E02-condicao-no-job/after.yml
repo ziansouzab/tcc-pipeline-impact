@@ -1,0 +1,22 @@
+name: Avaliação E02
+'on':
+  - push
+  - pull_request
+permissions:
+  contents: read
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          mkdir -p dist
+          printf '%s\n' 'evidência de exemplo' > dist/evidence.txt
+      - if: github.event_name == 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: evidence
+          path: dist/evidence.txt
+      - uses: actions/download-artifact@v4
+        with:
+          name: evidence
+          path: downloads

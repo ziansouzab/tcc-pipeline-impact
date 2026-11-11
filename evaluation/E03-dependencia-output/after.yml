@@ -1,0 +1,21 @@
+name: Avaliação E03
+'on':
+  - push
+  - pull_request
+permissions:
+  contents: read
+jobs:
+  pack:
+    runs-on: ubuntu-latest
+    outputs:
+      label: ${{ steps.prepare.outputs.label }}
+    steps:
+      - id: prepare
+        run: printf '%s\n' 'label=exemplo' >> "$GITHUB_OUTPUT"
+  publish:
+    needs: pack
+    runs-on: ubuntu-latest
+    steps:
+      - env:
+          PACKAGE_LABEL: ${{ needs.pack.outputs.label }}
+        run: printf '%s\n' "$PACKAGE_LABEL"

@@ -1,0 +1,24 @@
+name: Avaliação E04
+'on': push
+permissions:
+  contents: read
+jobs:
+  pack:
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          mkdir -p dist
+          printf '%s\n' 'evidência de exemplo' > dist/evidence.txt
+      - if: github.ref == 'refs/heads/main'
+        uses: actions/upload-artifact@v4
+        with:
+          name: evidence
+          path: dist/evidence.txt
+  verify:
+    needs: pack
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: evidence
+          path: downloads

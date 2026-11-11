@@ -579,18 +579,19 @@ implementadas. Consulte `coverage` para verificar escopo, situação e motivos.
 
 ## 5. Integração e avaliação
 
-### LIM-035 — Entrada local e ausência de serviço integrado
+### LIM-035 — Entrada local e seleção de versões no piloto
 
 **Tipo:** estágio da implementação.
 
-A CLI recebe um arquivo local em `audit` e dois na comparação. Obter a base de
-um PR, ler YAML por SHA ou referência Git e fornecer um serviço HTTP permanecem
-como extensões futuras.
+A CLI recebe um arquivo local em `audit` e dois na comparação. O piloto usa o
+Git para extrair o YAML do SHA do PR e entrega uma cópia local à CLI. A seleção
+automática de duas versões para comparação e um serviço HTTP são extensões
+futuras.
 
 **Impacto:** o usuário ou a integração deve fornecer o caminho da configuração
 auditada e, para comparar, também o caminho da versão anterior.
 
-**Referência:** cli.py, main(); model.py, load(); próximos passos.
+**Referência:** cli.py, main(); model.py, load(); scripts/audit_pull_request.py.
 
 ### LIM-036 — Histórico e métricas reais não coletados
 
@@ -607,22 +608,25 @@ representam o comportamento histórico de um repositório.
 
 **Referência:** analyzer.py, assumptions; próximos passos, coleta de histórico.
 
-### LIM-037 — Disparo condicional e barreira do analisador pendentes
+### LIM-037 — Escopo do disparo condicional e da integração
 
-**Tipo:** requisitos de integração planejados.
+**Tipo:** escopo do piloto e requisitos de integração planejados.
 
-A CLI sempre analisa os arquivos que recebeu. Ainda não detecta automaticamente
-se houve mudança em arquivos de pipeline, incluindo adições, remoções e renomes.
+A CLI analisa os arquivos que recebeu. No piloto, um script verifica o diff
+completo do PR. A análise é limitada a YAMLs diretamente em `.github/workflows/`
+em PRs do mesmo repositório para a branch de laboratório. Push, scripts e actions
+locais alterados fora desse caminho ficam fora do disparo. Um rename aparece
+como remoção do caminho antigo e inclusão do novo.
 
-A Action própria, a seleção de versões e o job inicial de preparação/análise
-ainda não estão implementados. Também não existe uma proteção específica contra
-sugerir remover a dependência que preserva a execução desse job inicial.
+O piloto usa dois jobs independentes. Um job de auditoria que sirva de barreira
+para a CI e a proteção de sua dependência contra sugestões de remoção ficam
+para a integração em pipelines que exijam essa ordem.
 
-**Impacto:** a integração precisará distinguir análise dispensada de falha ao obter
-o diff. Ler o YAML que contém o analisador não cria recursão; o cuidado é com a
-barreira de ordenação, não com executar o próprio YAML.
+**Impacto:** mudanças fora dos caminhos monitorados são dispensadas. O resumo
+distingue essa situação de falha ao obter o diff ou ler um arquivo. A leitura do
+workflow que contém o analisador é estática.
 
-**Referência:** cli.py, main(); próximos passos, disparo e preservação da CI.
+**Referência:** scripts/audit_pull_request.py; .github/workflows/pipeline-audit-lab.yml.
 
 ### LIM-038 — Código de saída não certifica correção
 

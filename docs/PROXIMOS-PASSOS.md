@@ -1,12 +1,13 @@
 # Próximos passos
 
-A versão atual audita um workflow local e compara duas versões. O próximo marco
-é usar os dois modos em um ambiente experimental do GitHub Actions, com o mesmo
-núcleo de análise e contrato de relatórios.
+A versão atual audita um workflow local e compara duas versões. A branch
+`laboratorio/auditoria` usa a auditoria em PRs controlados com o mesmo núcleo
+de análise e contrato de relatórios. [Roteiro do piloto](PILOTO-AUDITORIA.md).
 
-Os requisitos a seguir orientam a próxima implementação da integração.
+O próximo marco de integração é automatizar a comparação entre as versões de um
+PR. Os requisitos a seguir orientam essa extensão.
 
-## Primeiro marco no GitHub Actions
+## Integração da comparação no GitHub Actions
 
 Uma alteração em um workflow deve produzir este percurso:
 
@@ -57,7 +58,7 @@ renomeações, deverá identificar os caminhos e as revisões disponíveis.
 A integração deve registrar falhas ao obter o diff, a revisão ou o arquivo como
 erros de preparação e indicar quais configurações foram efetivamente analisadas.
 
-## Critérios do primeiro experimento
+## Critérios para ampliar o experimento
 
 - Alteração apenas na aplicação dispensa o analisador e mantém a CI.
 - Alteração em workflow executa a análise com versões identificadas.

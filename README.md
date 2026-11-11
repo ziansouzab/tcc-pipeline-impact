@@ -120,8 +120,9 @@ Windows, `demo.ps1` audita o caso 03 usando o ambiente `.venv`.
 | Condições suportadas | Procura consumo ativo com uploads anteriores pulados em cenários delimitados |
 | Revisão do paralelismo | Examina a remoção hipotética de uma dependência, considerando relações de dados reconhecidas |
 
-A análise é estática e local. A integração com Actions, a seleção de versões
-de um PR e a coleta de histórico estão nos próximos marcos.
+A análise é estática. A branch `laboratorio/auditoria` usa a CLI para auditar
+workflows alterados em PRs de laboratório. A comparação automática e o histórico
+ficam para os próximos marcos. [Roteiro do piloto](docs/PILOTO-AUDITORIA.md).
 
 ## Como interpretar o resultado
 
