@@ -52,7 +52,7 @@ jobs:
 
       - name: Disponibilizar relatórios
         if: ${{ !cancelled() && (steps.audit.outcome == 'success' || steps.audit.outcome == 'failure') }}
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0c250532a479d7789f
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         with:
           name: pipeline-audit-reports
           path: ${{ runner.temp }}/pipeline-audit/reports
