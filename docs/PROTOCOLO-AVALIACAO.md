@@ -51,3 +51,23 @@ anteriores à coleta dos resultados. [Regras e contrato do relatório](REGRAS-E-
 Relate os resultados por cenário e explicite o tamanho e a origem sintética
 da amostra. A evidência do piloto documenta o acionamento e a entrega dos
 relatórios. A associação com o histórico de execução fica para outro marco.
+
+## Resultados preliminares
+
+As expectativas e os pares foram registrados no commit `a00a9b2` antes da
+execução. A avaliação local usou a versão 0.2.0, schema 0.3, com o núcleo do
+commit `e5e0db7`. Os relatórios estão em `reports/avaliacao/`, com saídas
+separadas por caso e por modo.
+
+| Caso | Auditoria da versão atual | Informação acrescentada pela comparação |
+|---|---|---|
+| E01 | Um R02 em `verify`, step 1, para `bundle`. A cobertura de R05 protege a dependência pela relação de dados que permaneceu. | `STEP_CHANGE` em `pack`, com `verify` como descendente afetado. O alerta está ausente na versão anterior. |
+| E02 | Dois R03 em `review`, step 3, nos cenários de push em `main` e `feature`. | `STEP_CHANGE` em `review`. Os dois alertas estão ausentes na versão anterior. |
+| E03 | A relação de dados entre `pack` e `publish` protege a dependência. | `STEP_CHANGE` em `publish`. A versão anterior apresenta R05 no campo `needs`. |
+| E04 | R03 suspensa pelo filtro de evento, com a precedência de artefato reconhecida por R02. | `TRIGGER_CHANGE`. A versão anterior apresenta R03 no cenário de push em `feature`. |
+
+Os dois modos produziram a mesma análise da versão atual nos quatro pares.
+Os grafos foram preservados. Em cada par, a comparação registrou uma alteração
+e permitiu contrastar achados ou cobertura com a versão anterior. Esses
+resultados descrevem a análise estática de quatro cenários sintéticos. O
+efeito de incorporar histórico ainda requer avaliação.

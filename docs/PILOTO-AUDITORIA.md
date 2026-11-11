@@ -57,23 +57,21 @@ Mantenha a alteração em `name` para observar a nova auditoria.
 
 ## Registro para o TCC
 
-Guarde os links das execuções, os SHAs e os relatórios como evidência do
-piloto. Preencha uma linha por cenário e anote o resultado observado antes de
-encerrar o PR.
+O piloto executou os cenários abaixo com base no commit
+`4ea330ceb897ef22f3baa9e6d91aa4202e8041d8`. Os jobs de auditoria e da CI
+concluíram com sucesso nas quatro execuções. [PR de laboratório](https://github.com/ziansouzab/tcc-pipeline-analizer/pull/1).
 
-| Cenário | Link da execução | SHA da base e do PR | Arquivo e relatórios | Resultado observado |
-|---|---|---|---|---|
-|  |  |  |  |  |
+| Cenário | SHA do PR | Resultado observado | Execução |
+|---|---|---|---|
+| Controle | `eca19cf1c6ed71ff6f40c061653ebec07bdbc4da` | Instalação e análise dispensadas. Nenhum artefato. | [Controle](https://github.com/ziansouzab/tcc-pipeline-analizer/actions/runs/42928417629) |
+| Perda de precedência | `c6dd7da3c2ca912effcdcf9b6b6d86c5eaa3914c` | Um par de relatórios, com R02 em `verify`, step 2. | [R02](https://github.com/ziansouzab/tcc-pipeline-analizer/actions/runs/42928623351) |
+| Restauração | `9fbb435441694a2f35ad5b21a3132ea785c9cf1e` | Um par de relatórios, com zero alertas. | [Restauração](https://github.com/ziansouzab/tcc-pipeline-analizer/actions/runs/42928709447) |
+| Múltiplos arquivos e renomeação | `9a3dc76bc0ec25b14970a78d74c65f914e46d8cd` | Dois pares de relatórios. O diff do mesmo SHA registra o caminho antigo como exclusão. | [Múltiplos arquivos](https://github.com/ziansouzab/tcc-pipeline-analizer/actions/runs/42928766824) |
 
-Para avaliar a hipótese, fixe o commit do analisador e prepare casos
-independentes dos 12 pares de desenvolvimento. Registre o diagnóstico
-esperado e a justificativa de cada caso antes de consultar a ferramenta. Na
-condição A, audite a versão modificada. Na condição B, compare as duas versões
-do mesmo caso. Avalie se o diagnóstico e a localização correspondem à
-expectativa e se a comparação acrescenta uma explicação correta da mudança.
-Registre também alertas indevidos, problemas não apontados e análises
-indeterminadas.
+A primeira execução de controle falhou na resolução da action de upload. O
+commit `4ea330c` corrigiu o SHA da action e o controle passou ao reabrir o PR.
+[Execução inicial](https://github.com/ziansouzab/tcc-pipeline-analizer/actions/runs/42928206838).
 
-| Caso e SHAs | Diagnóstico esperado e justificativa | A — diagnóstico e localização | B — explicação da mudança | Avaliação |
-|---|---|---|---|---|
-|  |  |  |  |  |
+As cópias locais do ZIP, dos relatórios e dos metadados das execuções estão em
+`reports/piloto-github/`. Os resultados de auditoria e comparação em casos
+separados estão no [protocolo de avaliação](PROTOCOLO-AVALIACAO.md).
