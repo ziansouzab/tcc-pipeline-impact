@@ -1,0 +1,72 @@
+name: Laboratório de auditoria de workflows
+
+on:
+  pull_request:
+    branches:
+      - laboratorio/auditoria
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    name: Auditoria do PR
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      BASE_SHA: ${{ github.event.pull_request.base.sha }}
+      HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+
+    steps:
+      - name: Obter as revisões do PR
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Selecionar workflows no diff do PR
+        id: prepare
+        shell: bash
+        run: |
+          git switch --detach "$BASE_SHA"
+          audit_directory="$RUNNER_TEMP/pipeline-audit"
+          python3 scripts/audit_pull_request.py prepare --base "$BASE_SHA" --head "$HEAD_SHA" --directory "$audit_directory"
+
+      - name: Instalar o analisador da base
+        if: steps.prepare.outputs.has_workflows == 'true'
+        shell: bash
+        run: |
+          audit_directory="$RUNNER_TEMP/pipeline-audit"
+          python3 -m venv "$audit_directory/venv"
+          "$audit_directory/venv/bin/python" -m pip install -r requirements-repro.txt
+          "$audit_directory/venv/bin/python" -m pip install --no-deps .
+
+      - name: Auditar workflows alterados
+        id: audit
+        if: steps.prepare.outputs.has_workflows == 'true'
+        shell: bash
+        run: |
+          audit_directory="$RUNNER_TEMP/pipeline-audit"
+          "$audit_directory/venv/bin/python" scripts/audit_pull_request.py audit --directory "$audit_directory"
+
+      - name: Disponibilizar relatórios
+        if: ${{ !cancelled() && (steps.audit.outcome == 'success' || steps.audit.outcome == 'failure') }}
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0c250532a479d7789f
+        with:
+          name: pipeline-audit-reports
+          path: ${{ runner.temp }}/pipeline-audit/reports
+          if-no-files-found: ignore
+
+  ci-lab:
+    name: CI da aplicação de laboratório
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Obter o conteúdo do PR
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          persist-credentials: false
+
+      - name: Conferir a entrada da aplicação de laboratório
+        run: test -s laboratorio/app.txt

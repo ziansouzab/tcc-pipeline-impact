@@ -1,0 +1,195 @@
+import json
+import os
+from pathlib import Path
+import subprocess
+import sys
+import tempfile
+import unittest
+
+from tests.helpers import ROOT
+
+
+class PullRequestAuditTests(unittest.TestCase):
+    def setUp(self):
+        temporary_root = ROOT / ".tmp"
+        temporary_root.mkdir(exist_ok=True)
+        temporary_directory = tempfile.TemporaryDirectory(dir=temporary_root)
+        self.addCleanup(temporary_directory.cleanup)
+        self.root = Path(temporary_directory.name)
+        self.repository = self.root / "repository"
+        self.repository.mkdir()
+        self.output = self.root / "output"
+        self.summary_file = self.root / "summary.md"
+        self.github_output = self.root / "github-output.txt"
+        self.script = ROOT / "scripts/audit_pull_request.py"
+        self.environment = os.environ.copy()
+        self.environment["GITHUB_OUTPUT"] = str(self.github_output)
+        self.environment["GITHUB_STEP_SUMMARY"] = str(self.summary_file)
+        self.git("init", "--quiet", "--initial-branch=base")
+        self.workflows = self.repository / ".github/workflows"
+        self.workflows.mkdir(parents=True)
+        case = ROOT / "cases/03-artefato-sem-ordem"
+        self.before = (case / "before.yml").read_bytes()
+        self.after = (case / "after.yml").read_bytes()
+
+    def git(self, *arguments):
+        command = [
+            "git",
+            "-c", "user.name=Teste Pipeline Impact",
+            "-c", "user.email=test@example.invalid",
+            "-c", "commit.gpgsign=false",
+            "-c", "core.autocrlf=false",
+        ]
+        command.extend(arguments)
+        completed = subprocess.run(
+            command,
+            cwd=self.repository,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            check=True,
+        )
+        return completed.stdout.strip()
+
+    def commit(self, message):
+        self.git("add", "--all")
+        self.git("commit", "--quiet", "-m", message)
+        return self.git("rev-parse", "HEAD")
+
+    def execute(self, subcommand, *arguments):
+        command = [sys.executable, str(self.script), subcommand, "--directory", str(self.output)]
+        command.extend(arguments)
+        return subprocess.run(
+            command,
+            cwd=self.repository,
+            env=self.environment,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            check=False,
+        )
+
+    def prepare(self, base, head):
+        return self.execute("prepare", "--base", base, "--head", head)
+
+    def read_summary(self):
+        return self.summary_file.read_text(encoding="utf-8")
+
+    def test_prepare_selects_changes_across_pr_and_reads_exact_head_blobs(self):
+        main_workflow = self.workflows / "ci.yml"
+        main_workflow.write_bytes(self.before)
+        unchanged = self.workflows / "keep.yml"
+        unchanged.write_bytes(self.before)
+        renamed = self.workflows / "rename.yml"
+        renamed.write_bytes(self.before)
+        merge_base = self.commit("Versão comum")
+
+        (self.workflows / "base-only.yml").write_bytes(self.before)
+        base = self.commit("Mudança independente na base")
+        self.git("switch", "--quiet", "-c", "topic", merge_base)
+        main_workflow.write_bytes(self.after)
+        self.commit("Modifica o workflow antes do último commit")
+
+        renamed.rename(self.workflows / "renamed.yaml")
+        (self.workflows / "ci.yaml").write_bytes(self.before)
+        (self.workflows / "notes.txt").write_text("Texto", encoding="utf-8")
+        nested = self.workflows / "examples"
+        nested.mkdir()
+        (nested / "example.yml").write_bytes(self.before)
+        head = self.commit("Adiciona outro workflow e renomeia o terceiro")
+        self.git("switch", "--quiet", "base")
+
+        result = self.prepare(base, head)
+        self.assertEqual(0, result.returncode, self.read_summary())
+        self.assertEqual("has_workflows=true\n", self.github_output.read_text(encoding="utf-8"))
+        plan = json.loads((self.output / "plan.json").read_text(encoding="utf-8"))
+        self.assertEqual(base, plan["base"])
+        self.assertEqual(merge_base, plan["merge_base"])
+        self.assertEqual(head, plan["head"])
+        expected_changes = [
+            {"status": "A", "path": ".github/workflows/ci.yaml"},
+            {"status": "M", "path": ".github/workflows/ci.yml"},
+            {"status": "D", "path": ".github/workflows/rename.yml"},
+            {"status": "A", "path": ".github/workflows/renamed.yaml"},
+        ]
+        self.assertEqual(expected_changes, plan["changes"])
+        self.assertEqual(self.before, (self.output / "inputs/001.yml").read_bytes())
+        self.assertEqual(self.after, (self.output / "inputs/002.yml").read_bytes())
+        self.assertFalse((self.output / "inputs/003.yml").exists())
+        self.assertEqual(self.before, (self.output / "inputs/004.yml").read_bytes())
+        self.assertIn("Exclusão registrada", self.read_summary())
+
+    def test_application_change_does_not_enable_audit(self):
+        (self.workflows / "ci.yml").write_bytes(self.before)
+        base = self.commit("Workflow com dependência")
+        (self.repository / "app.txt").write_text("Aplicação", encoding="utf-8")
+        head = self.commit("Altera apenas a aplicação")
+
+        result = self.prepare(base, head)
+        self.assertEqual(0, result.returncode, self.read_summary())
+        self.assertEqual("has_workflows=false\n", self.github_output.read_text(encoding="utf-8"))
+        self.assertIn("Auditoria dispensada", self.read_summary())
+
+    def test_deleted_workflow_is_recorded_without_enabling_audit(self):
+        main_workflow = self.workflows / "ci.yml"
+        main_workflow.write_bytes(self.before)
+        base = self.commit("Workflow com dependência")
+        main_workflow.unlink()
+        head = self.commit("Exclui workflow")
+
+        result = self.prepare(base, head)
+        self.assertEqual(0, result.returncode, self.read_summary())
+        self.assertEqual("has_workflows=false\n", self.github_output.read_text(encoding="utf-8"))
+        self.assertIn("Exclusão registrada", self.read_summary())
+        self.assertIn(".github/workflows/ci.yml", self.read_summary())
+
+    def test_audit_preserves_successful_reports_when_another_file_fails(self):
+        (self.workflows / "ci.yml").write_bytes(self.before)
+        base = self.commit("Workflow com dependência")
+        (self.workflows / "broken.yml").write_bytes(b"\xff")
+        (self.workflows / "ci.yml").write_bytes(self.after)
+        head = self.commit("Adiciona workflow ilegível e retira a dependência")
+        result = self.prepare(base, head)
+        self.assertEqual(0, result.returncode, self.read_summary())
+
+        result = self.execute("audit")
+        self.assertEqual(1, result.returncode, self.read_summary())
+        reports = self.output / "reports"
+        self.assertFalse((reports / "001").exists())
+        report_text = (reports / "002/report.json").read_text(encoding="utf-8")
+        report = json.loads(report_text)
+        self.assertEqual("audit", report["mode"])
+        finding = report["analysis"]["findings"][0]
+        self.assertEqual("R02_ARTIFACT_ORDER", finding["rule"])
+        self.assertEqual({"job": "verify", "step": 2}, finding["location"])
+        self.assertTrue((reports / "002/report.md").is_file())
+        self.assertIn("Erro de auditoria", self.read_summary())
+        self.assertIn(".github/workflows/broken.yml", self.read_summary())
+        self.assertIn("**1** alerta", self.read_summary())
+        self.assertIn(head, self.read_summary())
+
+    def test_warning_does_not_fail_the_audit_and_disappears_after_restoring_order(self):
+        workflow = self.workflows / "ci.yml"
+        workflow.write_bytes(self.before)
+        base = self.commit("Workflow com dependência")
+        workflow.write_bytes(self.after)
+        head = self.commit("Remove a dependência")
+        result = self.prepare(base, head)
+        self.assertEqual(0, result.returncode, self.read_summary())
+
+        result = self.execute("audit")
+        self.assertEqual(0, result.returncode, self.read_summary())
+        self.assertIn("**1** alerta", self.read_summary())
+
+        restored = self.before.replace(b"Experimento de pipeline", b"Experimento revisado", 1)
+        workflow.write_bytes(restored)
+        head = self.commit("Restaura a dependência e altera o nome do workflow")
+        self.output = self.root / "restored-output"
+        result = self.prepare(base, head)
+        self.assertEqual(0, result.returncode, self.read_summary())
+        result = self.execute("audit")
+        self.assertEqual(0, result.returncode, self.read_summary())
+        report_text = (self.output / "reports/001/report.json").read_text(encoding="utf-8")
+        report = json.loads(report_text)
+        self.assertEqual(0, report["summary"]["warning"])
+        self.assertIn("**0** alerta", self.read_summary())
