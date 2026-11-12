@@ -4,19 +4,21 @@ O Pipeline Impact audita um workflow local ou compara duas versões. Os módulos
 distinguem entrada, modelagem, interpretação de condições, análise e
 apresentação.
 
-Esta documentação descreve a ferramenta 0.2.0 e o contrato JSON 0.3. Os próximos
-marcos incluem histórico, seleção automática de versões Git e integração com
-Actions. [Próximos passos](PROXIMOS-PASSOS.md).
+Esta documentação descreve a ferramenta 0.3.0 e o contrato JSON 0.4. O GitHub
+Actions aciona a auditoria dos workflows alterados em PRs e fornece o contexto
+do evento. A seleção automática de versões para comparação e a coleta de
+histórico estão previstas em etapas posteriores. [Próximos passos](PROXIMOS-PASSOS.md).
 
 ## Fluxo de processamento
 
 ```mermaid
 flowchart TD
     A[CLI recebe argumentos] --> B{Modo}
+    X[JSON opcional com contextos de evento] --> A
     B -->|Auditoria| C[Carrega um YAML]
     B -->|Comparação| D[Carrega dois YAMLs]
     C --> E[audit chama snapshot uma vez]
-    D --> F[compare calcula mudanças e chama snapshot para cada versão]
+    D --> F[compare detalha mudanças e chama snapshot para cada versão]
     E --> G[Relatório estruturado]
     F --> G
     G --> H[JSON]
@@ -24,8 +26,9 @@ flowchart TD
 ```
 
 `audit()` usa um snapshot em `analysis`. `compare()` reúne diferenças em
-`changes` e registra os snapshots em `before` e `after`. Cada snapshot contém
-relações, diagnósticos, cobertura e limitações da configuração.
+`changes`, detalha mudanças de steps em `step_changes` e registra os snapshots
+em `before` e `after`. Cada snapshot contém relações, avaliações dos contextos
+informados, diagnósticos, cobertura e limitações da configuração.
 
 ## Responsabilidades
 
@@ -34,7 +37,9 @@ relações, diagnósticos, cobertura e limitações da configuração.
 | [cli.py](../src/pipeline_impact/cli.py) | Identificar o modo, carregar entradas e gravar relatórios |
 | [model.py](../src/pipeline_impact/model.py) | Ler e normalizar YAML, verificar a estrutura suportada e oferecer consultas ao grafo |
 | [conditions.py](../src/pipeline_impact/conditions.py) | Interpretar o subconjunto de condições e calcular estados no modelo |
+| [event_context.py](../src/pipeline_impact/event_context.py) | Validar os contextos de entrada e verificar sua elegibilidade perante os gatilhos |
 | [analyzer.py](../src/pipeline_impact/analyzer.py) | Auditar, comparar, aplicar verificações e registrar a cobertura |
+| [step_comparison.py](../src/pipeline_impact/step_comparison.py) | Estabelecer a correspondência entre steps e descrever mudanças por job |
 | [reporting.py](../src/pipeline_impact/reporting.py) | Apresentar os resultados e os grafos em Markdown |
 | [__main__.py](../src/pipeline_impact/__main__.py) | Encaminhar `python -m pipeline_impact` para a CLI |
 
@@ -88,19 +93,34 @@ sucesso. Os resultados possíveis são `True`, `False` e `None`, este último
 representando indeterminação. Construções não suportadas geram uma restrição
 tratada pela análise de estados.
 
-O analisador utiliza três cenários predefinidos: push na `main`, push em uma
-branch de exemplo e pull request com referência de merge de exemplo. Apenas
-eventos simples compatíveis são considerados. Configurações não vazias de
-eventos suspendem a análise contextual.
+Os contextos são fornecidos pela opção `--contexts`. O arquivo de exemplo em
+`cases/contexts.json` contém três cenários sintéticos usados nas verificações
+locais. Em uma execução da CLI sem contexto informado, a análise estrutural
+continua e a R03 fica suspensa. Para cada contexto fornecido, a análise verifica
+primeiro a elegibilidade do evento. Os eventos declarados sem filtros são
+suportados. Para `push` e `pull_request`, o subconjunto inclui um único filtro
+`branches` ou `branches-ignore` com nomes literais. Filtros e combinações fora
+desse subconjunto resultam em elegibilidade indeterminada.
 
-Esses valores não são coletados do ambiente de execução. O modelo pressupõe
-sucesso dos comandos ativos e não reproduz integralmente falhas, cancelamentos
-ou seus efeitos. Consulte LIM-011 a LIM-019 no [catálogo](LIMITACOES-DO-PROTOTIPO.md).
+No Actions, o script de integração lê o nome e as referências do evento que
+acionou a auditoria e entrega esse contexto à CLI. O contexto descreve o PR do
+repositório que hospeda a auditoria. As referências podem ser diferentes das
+usadas em outro repositório de origem do YAML. Os estados calculados descrevem
+uma execução hipotética sob a premissa de sucesso dos comandos ativos.
+[Detalhes da integração](PILOTO-AUDITORIA.md) ·
+[Catálogo, LIM-013 a LIM-019](LIMITACOES-DO-PROTOTIPO.md).
 
 ## Comparação e recomendações
 
 A comparação acompanha jobs, `needs`, alcance transitivo, `if`,
 `continue-on-error`, steps, outputs e mudanças em campos não interpretados.
+
+Quando a lista de steps de um job muda, a regra `STEP_CHANGE` registra a
+alteração agregada. A comparação detalhada busca correspondências entre steps
+do mesmo job e registra as mudanças em `step_changes`. A ordem relativa é
+avaliada entre steps correspondentes de jobs sequenciais suportados. Quando
+um `if` é alterado em um step identificado, os estados hipotéticos calculados
+para cada contexto são reunidos no relatório de comparação.
 As verificações de artefatos e de revisão do paralelismo são feitas em cada
 snapshot. O relatório não atribui automaticamente a causa de um alerta à mudança.
 

@@ -36,6 +36,59 @@ Falhas de preparação ou análise aparecem como erro no job de auditoria. A CI
 de laboratório executa em ambos os casos.
 [Eventos de PR](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#pull_request) · [Artefatos de workflow](https://docs.github.com/en/actions/tutorials/store-and-share-data).
 
+### Contexto do evento na versão 0.3.0
+
+O job de auditoria lê `GITHUB_EVENT_NAME`, `GITHUB_REF`,
+`GITHUB_BASE_REF` e `GITHUB_HEAD_REF` fornecidas pelo GitHub Actions.
+O script converte esses campos em um contexto JSON e passa o arquivo à CLI
+com `--contexts`. O mesmo contexto é avaliado para cada workflow selecionado.
+Os relatórios registram os campos recebidos, a compatibilidade do evento
+com o gatilho do YAML e os estados estimados dos steps em eventos elegíveis.
+[Variáveis do GitHub Actions](https://docs.github.com/en/actions/reference/workflows-and-actions/variables#default-environment-variables).
+
+O evento pertence à execução do piloto. A avaliação dos workflows
+selecionados continua estática e usa a premissa de sucesso das etapas
+ativas. A coleta se limita aos campos listados e o piloto audita a
+configuração do PR. A comparação entre versões permanece disponível na
+CLI. [Contrato do relatório](REGRAS-E-RELATORIO.md) ·
+[Limitações LIM-014, LIM-015 e LIM-037](LIMITACOES-DO-PROTOTIPO.md).
+
+### Validação do contexto em um novo PR
+
+1. Confira se a branch de destino já contém o analisador e o workflow de
+   auditoria da versão 0.3.0. O piloto instala a revisão base do PR.
+2. Em uma branch de teste do mesmo repositório, adicione o workflow abaixo
+   em `.github/workflows/contexto-pr-lab.yml` e abra um PR para `main`.
+   Para testar com destino a `laboratorio/auditoria`, use esse nome em
+   `branches` e na condição do primeiro step.
+3. No resumo da auditoria, confira o evento `pull_request`, o SHA auditado
+   e as branches de destino e origem. No artefato do YAML de teste, confira
+   `tool_version: "0.3.0"` e `schema_version: "0.4"` em `report.json`.
+   A entrada em `analysis.context_evaluations` deve ter
+   `event_status: "eligible"` e `step_states.checks: [true, false]`.
+4. Para conferir a exclusão pelo gatilho, troque a branch do filtro
+   por uma branch diferente do destino do PR. A auditoria deve registrar
+   `event_status: "excluded"`, `step_states: {}` e `contexts_checked: []`.
+
+```yaml
+name: Teste de contexto de PR
+on:
+  pull_request:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  checks:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Conferir destino do PR
+        if: github.base_ref == 'main'
+        run: echo destino esperado
+      - name: Conferir evento de push
+        if: github.event_name == 'push'
+        run: echo evento push
+```
+
 ### Cenários do piloto
 
 O arquivo `.github/workflows/caso-03-lab.yml` parte da versão protegida, com

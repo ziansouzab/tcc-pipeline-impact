@@ -1,6 +1,6 @@
 # Regras e relatório
 
-O contrato JSON 0.3 identifica a auditoria de um workflow e a comparação de
+O contrato JSON 0.4 identifica a auditoria de um workflow e a comparação de
 versões. A auditoria apresenta diagnósticos de uma configuração. A comparação
 acrescenta as mudanças entre configurações.
 
@@ -29,31 +29,107 @@ imposta pelo grafo aparecem em `structurally_unordered_pairs`.
 
 | Campo | Conteúdo |
 |---|---|
-| `schema_version` | `0.3` |
-| `tool_version` | `0.2.0` |
+| `schema_version` | `0.4` |
+| `tool_version` | `0.3.0` |
 | `mode` | `audit` para auditoria ou `compare` para comparação |
 | `analysis` | Snapshot do workflow auditado, presente no modo `audit` |
 | `before` e `after` | Snapshots das duas configurações, presentes no modo `compare` |
 | `changes` | Diferenças nas propriedades acompanhadas e descendentes potencialmente afetados, presentes no modo `compare` |
+| `step_changes` | Detalhes das mudanças nos steps de jobs presentes nas duas versões, disponíveis no modo `compare` |
 | `summary` | Contagens de `warning` e `opportunity` na auditoria. Na comparação, preserva a quantidade de mudanças e os tipos de achados da versão modificada |
 | `assumptions` | Premissas gerais para interpretar a análise |
 
 Cada snapshot contém `source`, `jobs`, `edges`, `data_relations`,
-`structurally_unordered_pairs`, `contexts_checked`, `findings`, `coverage` e
-`limitations`.
+`structurally_unordered_pairs`, `contexts_checked`, `context_evaluations`,
+`findings`, `coverage` e `limitations`.
 
 As arestas usam a direção do pré-requisito para o dependente. `data_relations`
-registra relações reconhecidas entre jobs, mesmo quando não há precedência
-garantida no grafo. `contexts_checked` informa cenários examinados pelo modelo;
-não é uma lista de execuções reais.
+registra relações reconhecidas entre jobs, inclusive nos casos sem precedência
+garantida no grafo. `contexts_checked` informa os cenários admitidos pelos
+gatilhos e examinados pelo modelo.
 
 O campo `source` identifica o arquivo recebido. O relatório não inclui o YAML
 completo nem todos os comandos dos steps.
 
-Consumidores do contrato 0.2 devem aceitar `schema_version` igual a `0.3` e
-ler `mode` para escolher o snapshot. Na comparação, `before`, `after` e
-`changes` mantêm seus significados. O conteúdo de `evidence` e os IDs dos
-achados continuam compatíveis com a versão anterior.
+O contrato 0.4 acrescenta `context_evaluations` em cada snapshot e
+`step_changes` na comparação. Os campos `before`, `after` e `changes` mantêm
+seus significados. Diagnósticos condicionais dependem dos contextos
+explicitamente fornecidos.
+
+## Contextos de evento
+
+A opção `--contexts` recebe um arquivo JSON em UTF-8 com uma lista de objetos.
+Em cada objeto, `github.event_name` deve ser um texto não vazio. Os campos
+opcionais `github.ref`, `github.base_ref`, `github.head_ref` e
+`github.event.before` aceitam texto não vazio ou `null`. Os campos são chaves
+planas. Chaves fora desse conjunto, chaves repetidas e contextos duplicados
+geram erro de entrada. [Arquivo de exemplo](../cases/contexts.json).
+
+Exemplo de contexto com referências de um pull request.
+
+```json
+[
+  {
+    "github.event_name": "pull_request",
+    "github.ref": "refs/pull/42/merge",
+    "github.base_ref": "main",
+    "github.head_ref": "ajuste-ci"
+  }
+]
+```
+
+Sem `--contexts` ou com lista vazia, a R03 aparece como suspensa. Com
+contextos, cada avaliação em `context_evaluations` registra o objeto recebido,
+`event_status`, a justificativa em `reason` e `step_states`. A elegibilidade
+tem três situações possíveis. `eligible` admite a avaliação dos steps.
+`excluded` indica evento ausente ou excluído pelo gatilho.
+`indeterminate` indica dados insuficientes ou gatilho fora do subconjunto
+interpretado. Em contextos elegíveis, `step_states` organiza os estados por job
+na ordem dos steps, com `true`, `false` e `null` para ativo, pulado e
+indeterminado no modelo. O mesmo conjunto de contextos é avaliado para cada
+configuração no modo de comparação.
+
+Para um evento declarado sem filtros, a avaliação verifica o nome do evento.
+Em `push` e `pull_request`, também se admite um único filtro `branches` ou
+`branches-ignore` com nomes literais. O filtro usa a branch de `github.ref`
+em `push` e a branch de destino de `github.base_ref` em `pull_request`.
+Push de tag é excluído por filtros de branch. Padrões, filtros de caminhos,
+combinações de filtros e parâmetros não interpretados podem deixar a
+elegibilidade indeterminada para o contexto. [Catálogo, LIM-013 a LIM-016](LIMITACOES-DO-PROTOTIPO.md).
+
+## Alterações nos steps
+
+`STEP_CHANGE` continua em `changes` como registro agregado da mudança de lista
+por job. `step_changes` detalha as mudanças de jobs presentes nas duas versões
+com os tipos `added`, `removed`, `modified`, `reordered` e `unmatched`.
+Cada registro indica o job, as posições e os rótulos disponíveis em cada versão.
+As posições `before_step` e `after_step` contam a partir de 1. Os rótulos
+`before_name` e `after_name` usam o `name` ou, na ausência dele, o `id`.
+
+A correspondência considera o `id` único no job, sem distinção de maiúsculas
+e minúsculas, seguido pelo `name` único entre candidatos, pelo conteúdo
+equivalente sem `id` e `name` e pela action literal de um step sem nome.
+Para actions externas, o caminho anterior ao `@` permite reconhecer uma
+troca de versão. Actions locais e imagens Docker usam a referência literal
+completa. Em steps sem nome, o último critério compara o comando inalterado.
+Cada critério exige um par único entre os candidatos disponíveis.
+Casos com indícios de correspondência e sem par único podem aparecer como
+`unmatched`. A prioridade entre critérios faz parte da aproximação
+documentada na LIM-029.
+
+`reordered` registra a inversão da ordem entre steps correspondentes em um
+job sequencial suportado. Um deslocamento de posição causado apenas por
+inserção ou remoção conserva a ordem relativa dos steps restantes.
+
+`fields` inclui os valores anterior e atual de `name`, `if`,
+`continue-on-error` e `uses` literal quando o tipo de dado é suportado.
+Outras alterações aparecem pelo nome do campo em `other_fields`. O relatório
+preserva os valores de `run`, `env` e `with` no arquivo de origem. Para um
+`if` alterado com correspondência, `context_comparisons` compara os estados
+modelados no mesmo contexto. Os resultados possíveis são `active`, `skipped`,
+`indeterminate` e `event_excluded`. A interpretação de
+`continue-on-error` descreve um efeito possível sob falha.
+[Catálogo, LIM-016, LIM-029 e LIM-030](LIMITACOES-DO-PROTOTIPO.md).
 
 ## Estrutura de um achado
 
@@ -154,6 +230,8 @@ retornam `2`.
 
 Use `pipeline-impact audit caminho.yml` para auditar um arquivo ou
 `pipeline-impact --before antes.yml --after depois.yml` para comparar dois.
-Ambos aceitam `--output` e `--fail-on-warning`. As opções `--before` e `--after`
+Ambos aceitam `--contexts`, `--output` e `--fail-on-warning`. Por exemplo,
+`pipeline-impact audit cases/05-upload-condicional/after.yml --contexts cases/contexts.json`
+avalia o caso condicional com os contextos dos testes. As opções `--before` e `--after`
 pertencem à comparação. A CLI rejeita combinações dessas opções com `audit` e
 protege os arquivos de entrada contra sobrescrita pelo relatório.

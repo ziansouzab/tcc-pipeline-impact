@@ -6,7 +6,7 @@ cobertura do modelo.
 
 Desenvolvido como protótipo de um TCC em Engenharia de Software.
 
-**Ferramenta:** 0.2.0 · **Contrato JSON:** 0.3 · **Python:** 3.11 ou superior.
+**Ferramenta** 0.3.0 · **Contrato JSON** 0.4 · **Python** 3.11 ou superior.
 
 ## Exemplo
 
@@ -66,6 +66,7 @@ No PowerShell:
 ```powershell
 .\.venv\Scripts\python.exe -m pipeline_impact audit `
     cases/03-artefato-sem-ordem/after.yml `
+    --contexts cases/contexts.json `
     --output reports/auditoria
 ```
 
@@ -74,6 +75,7 @@ No Linux ou macOS:
 ```bash
 .venv/bin/python -m pipeline_impact audit \
     cases/03-artefato-sem-ordem/after.yml \
+    --contexts cases/contexts.json \
     --output reports/auditoria
 ```
 
@@ -87,6 +89,7 @@ No PowerShell:
 .\.venv\Scripts\python.exe -m pipeline_impact `
     --before cases/03-artefato-sem-ordem/before.yml `
     --after cases/03-artefato-sem-ordem/after.yml `
+    --contexts cases/contexts.json `
     --output reports/comparacao
 ```
 
@@ -96,6 +99,7 @@ No Linux ou macOS:
 .venv/bin/python -m pipeline_impact \
     --before cases/03-artefato-sem-ordem/before.yml \
     --after cases/03-artefato-sem-ordem/after.yml \
+    --contexts cases/contexts.json \
     --output reports/comparacao
 ```
 
@@ -108,6 +112,13 @@ Consulte `python -m pipeline_impact --help` ou
 `python -m pipeline_impact audit --help` com o interpretador do ambiente. No
 Windows, `demo.ps1` audita o caso 03 usando o ambiente `.venv`.
 
+O arquivo [cases/contexts.json](cases/contexts.json) fornece cenários sintéticos
+para repetir os exemplos. A opção `--contexts` é facultativa nos dois modos.
+Sem a opção ou com a lista vazia, as verificações estruturais continuam e a
+R03, que depende das condições de execução, é suspensa. Para estudar um caso
+real localmente, informe o evento e as referências pertinentes ao workflow.
+[Formato dos contextos](docs/REGRAS-E-RELATORIO.md#contextos-de-evento).
+
 ## O que a versão atual analisa
 
 | Capacidade | Resultado |
@@ -115,21 +126,27 @@ Windows, `demo.ps1` audita o caso 03 usando o ambiente `.venv`.
 | Leitura de YAML | Exige UTF-8 e conteúdo serializável em JSON; preserva `on` e verifica estruturas, dependências e ciclos |
 | Auditoria individual | Apresenta grafo, achados, cenários e cobertura de um workflow |
 | Comparação de versões | Registra mudanças em jobs, dependências, condições e propriedades acompanhadas |
+| Comparação de steps | Detalha mudanças em steps com correspondência reconhecida, adições, remoções e alterações na ordem relativa |
 | Alcance no grafo | Identifica relações transitivas e descendentes potencialmente afetados |
 | Artefatos reconhecidos | Verifica precedência entre uploads e downloads de mesmo nome literal |
-| Condições suportadas | Procura consumo ativo com uploads anteriores pulados em cenários delimitados |
+| Condições suportadas | Procura consumo ativo com uploads anteriores pulados nos contextos de evento fornecidos |
 | Revisão do paralelismo | Examina a remoção hipotética de uma dependência, considerando relações de dados reconhecidas |
 
 A análise é estática. No GitHub Actions, o workflow de auditoria usa a CLI para
 analisar YAMLs alterados em PRs do mesmo repositório destinados a `main` ou
-`laboratorio/auditoria`. A comparação automática e o histórico ficam para os
-próximos marcos. [Roteiro do piloto](docs/PILOTO-AUDITORIA.md).
+`laboratorio/auditoria`. O evento recebido do GitHub fornece um contexto para
+avaliar como os workflows auditados se comportariam nessa situação. A
+comparação automática e o histórico ficam para os próximos marcos.
+[Roteiro do piloto](docs/PILOTO-AUDITORIA.md).
 
 ## Como interpretar o resultado
 
 - `mode` identifica `audit` ou `compare`.
 - `analysis.findings` reúne os achados do workflow auditado.
 - `changes` descreve diferenças entre as configurações no modo `compare`.
+- `step_changes` detalha as mudanças de steps no modo `compare`.
+- `context_evaluations` registra a elegibilidade e os estados calculados para
+  cada contexto fornecido.
 - `after.findings` reúne os diagnósticos atuais da versão modificada.
 - `location` indica o job e o step do consumo ou o campo `needs` a revisar.
 - `warning` indica inconsistência ou risco sob as premissas do modelo.
@@ -137,11 +154,11 @@ próximos marcos. [Roteiro do piloto](docs/PILOTO-AUDITORIA.md).
 - `coverage` registra o escopo, a situação e os motivos de cada análise.
 - `limitations` informa restrições encontradas durante a análise.
 
-O contrato 0.3 acrescenta modo, localização e cobertura aos campos da comparação.
-As evidências e os IDs dos achados permanecem compatíveis com o contrato 0.2.
-O Markdown explica onde está o achado, qual evidência o sustenta, sua possível
-consequência e o que revisar. Consulte os escopos de `coverage` antes de
-interpretar uma análise sem alertas.
+O contrato 0.4 acrescenta avaliações de contextos e detalhes de steps.
+`STEP_CHANGE` continua registrando em `changes` uma mudança na lista de steps
+por job. O Markdown explica a localização, a evidência, a possível consequência
+e a revisão recomendada. Consulte os escopos de `coverage` para interpretar
+uma análise sem alertas.
 
 ### Códigos de saída
 

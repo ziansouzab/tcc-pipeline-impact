@@ -1,6 +1,6 @@
 # Catálogo de limitações do protótipo
 
-Atualizado em **10/11/2026**. Contrato de saída **schema 0.3**.
+Atualizado em **12/11/2026**. Contrato de saída **schema 0.4**.
 
 Este é o registro vivo das restrições identificadas durante a leitura do código.
 Ele reúne limites técnicos, escolhas de escopo e integrações previstas. A
@@ -231,8 +231,10 @@ demonstra um defeito na configuração.
 
 **Tipo:** regras de avaliação deliberadamente restritas.
 
-O contexto aceita texto, booleano e None. Não fazemos coerção automática entre
-tipos, nem convertemos uma string isolada em condição lógica.
+O interpretador aceita texto, booleano e `None`. O arquivo passado em
+`--contexts` admite apenas chaves de evento conhecidas, com valores textuais
+ou `null` nos campos opcionais. O interpretador preserva os tipos durante a
+comparação.
 
 Um identificador ausente gera UnsupportedCondition. Um identificador presente
 com None pode propagar indeterminação em operações lógicas, mas comparações com
@@ -243,49 +245,59 @@ explícita não percorrem necessariamente o mesmo caminho.
 
 **Referência:** conditions.py, atom(), comparison() e tratamento em states().
 
-### LIM-013 — Cenários fixos e amostra pequena
+### LIM-013 — Cobertura restrita aos contextos informados
 
 **Tipo:** limitação de cobertura contextual.
 
-O analisador amostra push na main, push na feature e pull_request com referência
-de merge de exemplo. Ele considera os eventos simples declarados, mas não gera
-todos os cenários possíveis.
+O analisador avalia somente os contextos informados. O arquivo de teste
+`cases/contexts.json` fornece três cenários sintéticos. A CLI suspende a R03
+quando o arquivo de contextos é omitido ou contém uma lista vazia.
 
-**Impacto:** não detectar um problema nesses cenários não comprova sua ausência
-em outras branches, tags, inputs ou eventos.
+**Impacto** As conclusões de cada análise condicional valem para os contextos
+avaliados. Outras branches, tags, inputs ou eventos podem levar a outros estados.
 
-**Referência:** analyzer.py, CONTEXTS e laço de contextos de snapshot().
+**Referência** `snapshot()` em `analyzer.py` e `cases/contexts.json`.
 
-### LIM-014 — Contexto não é coletado automaticamente
+### LIM-014 — Contexto de evento parcial e dependente da origem
 
-**Tipo:** integração pendente.
+**Tipo** Escopo do contexto e validade da interpretação.
 
-A consulta de identificadores já é genérica. A pendência está em obter os valores:
-a ferramenta ainda não monta contextos a partir do ambiente real, da API ou dos
-dados do PR.
+Na CLI, os valores vêm do arquivo fornecido. Na integração com Actions,
+`read_github_event()` extrai o nome do evento, sua referência e, quando
+disponíveis, as referências de origem e destino do PR. O contexto mantém um
+conjunto de chaves planas de evento.
 
-O contexto é um dicionário plano de valores fornecidos. Não buscamos valores
-automaticamente só porque um nome apareceu em um if.
+Os valores automáticos descrevem o PR do repositório que hospeda o analisador.
+Quando o YAML veio de outro repositório ou foi projetado para outra branch,
+os valores do PR representam um cenário diferente daquele ambiente de origem.
+Um contexto local explícito pode representar as referências da origem.
 
-**Impacto:** um identificador lexicalmente reconhecido pode permanecer sem valor.
-Dados que só serão produzidos por um job futuro também podem ser desconhecidos.
+**Impacto** Informações externas ao conjunto coletado, como valores produzidos
+por jobs, podem ficar indeterminadas. Um evento real fornece dados de entrada
+para uma execução hipotética.
 
-**Referência:** conditions.py, atom(); analyzer.py, CONTEXTS.
+**Referência** `atom()` em `conditions.py`, `load_contexts()` em
+`event_context.py` e `read_github_event()` em `scripts/audit_pull_request.py`.
 
-### LIM-015 — Configurações de eventos não simuladas
+### LIM-015 — Subconjunto de eventos e filtros
 
-**Tipo:** suspensão conservadora da análise contextual.
+**Tipo** Elegibilidade parcial dos contextos.
 
-Se on for um mapeamento com algum valor não vazio, registramos uma limitação e
-suspendemos os contextos da análise de condições. Não interpretamos completamente
-filtros de branches, paths, tags, agendamentos ou configurações de inputs.
+O modelo admite eventos declarados sem filtros e, para `push` e
+`pull_request`, um único filtro literal de `branches` ou `branches-ignore`.
+Para push, a branch vem de `github.ref`. Para pull request, é a branch de
+destino em `github.base_ref`. A elegibilidade pode ficar indeterminada quando
+falta a referência necessária ou quando o gatilho usa padrões, filtros de
+caminhos ou tags, combinações, agendamentos, inputs ou variantes com
+parâmetros fora desse subconjunto.
 
-A guarda considera qualquer configuração não vazia, não apenas filtros de fato.
+**Impacto** A indeterminação é registrada por contexto. Se houver pelo menos
+um contexto elegível e outro indeterminado, a cobertura contextual é parcial.
+Se nenhum for elegível e houver indeterminação, a R03 fica suspensa. Se todos
+forem excluídos pelos gatilhos, a regra é não aplicável.
 
-**Impacto:** a análise contextual é suspensa como um todo nessa situação. Ler on
-não significa aplicar suas restrições corretamente a cenários hipotéticos.
-
-**Referência:** model.py, parse(); analyzer.py, filtered_events em snapshot().
+**Referência** `event_eligibility()` em `event_context.py` e `snapshot()` em
+`analyzer.py`.
 
 ### LIM-016 — Sucesso, falha e cancelamento simplificados
 
@@ -294,8 +306,10 @@ não significa aplicar suas restrições corretamente a cenários hipotéticos.
 failure() e cancelled() retornam False. success() devolve o parâmetro success;
 always() devolve True. Não consultamos logs ou resultados reais dos comandos.
 
-continue-on-error pode ter sua alteração reportada, mas não é uma simulação
-completa da política de falhas e seus efeitos.
+`continue-on-error` pode ter sua alteração reportada no job ou no step.
+Quando o valor booleano muda em um step identificado, o Markdown descreve
+uma consequência possível caso a etapa falhe. Os estados calculados para
+condições mantêm a premissa de sucesso.
 
 **Impacto:** não cobrimos todos os caminhos de exceção, falha ou cancelamento do
 runner. success=False não é sinônimo de falha real de um comando.
@@ -489,23 +503,41 @@ mudança de nome. Isso independe do acompanhamento de achados que foi adiado.
 
 **Tipo:** precisão de comparação e apresentação.
 
-STEP_CHANGE indica que a lista de steps mudou. Não fornece um pareamento
-individual que explique cada inserção, movimentação ou renomeação.
+`STEP_CHANGE` registra a mudança da lista por job. `step_changes` detalha as
+etapas de jobs presentes nas duas versões, com pareamento por identidade
+reconhecível. IDs duplicados e outros casos sem correspondência única podem
+aparecer como `unmatched`. Mudanças simultâneas de nome e de conteúdo podem
+impedir a identificação do mesmo step. A ordem relativa é verificada entre
+pares reconhecidos em jobs sequenciais suportados.
+
+O pareamento por nome tem prioridade sobre a comparação do conteúdo. Ao
+renomear um step e reutilizar seu nome em outro step na mesma mudança, o
+modelo pode associar a etapa ao nome reutilizado. IDs únicos e estáveis têm
+prioridade e permitem distinguir essas etapas.
+
+Em `fields`, o relatório registra os valores comparados de `name`, `if`,
+`continue-on-error` e `uses` literal quando suportados. Campos como `run`,
+`env` e `with` são indicados pelo nome em `other_fields` quando mudam.
+Nomes e condições exibidos no relatório devem ser tratados como conteúdo da
+configuração.
 
 `location` identifica o job consumidor e a posição do step na lista, a partir
 de 1. A segunda etapa corresponde ao índice Python 1. Em R05, `location`
 identifica o job dependente e seu campo `needs`.
 
-**Impacto:** a localização ajuda a encontrar a etapa, mas não é uma referência
-exata ao texto original nem uma identidade histórica.
+**Impacto** A localização identifica uma posição no YAML analisado. A
+correspondência é delimitada ao job e ao par de arquivos em análise. A
+rastreabilidade de steps ou de achados ao longo do histórico está fora desse
+pareamento.
 
-**Referência:** analyzer.py, compare(), snapshot(), finding() e location.
+**Referência** `compare_job_steps()` em `step_comparison.py` e `compare()` em
+`analyzer.py`.
 
 ### LIM-030 — Acompanhamento de achados adiado
 
 **Tipo:** decisão de escopo, não defeito a corrigir automaticamente.
 
-O schema 0.3 apresenta os achados atuais. A classificação em novos,
+O schema 0.4 apresenta os achados atuais. A classificação em novos,
 preexistentes ou resolvidos permanece adiada.
 
 O hash de `finding()` usa evidências que podem mudar com a posição. Os campos
@@ -676,8 +708,8 @@ Preservar a clareza do código continua sendo uma preferência do projeto.
 
 ## 6. Decisões e correções que não devem voltar como pendências
 
-- **Consulta genérica já implementada:** não precisamos de um if por identificador.
-  A pendência é obter os valores do contexto, conforme LIM-014.
+- **Consulta genérica já implementada.** O interpretador consulta os valores do
+  contexto fornecido, com escopo de coleta delimitado pela LIM-014.
 - **Classificação histórica removida:** o antigo caso de deslocar um step e
   classificá-lo falsamente como novo/resolvido não é um comportamento atual.
   Hoje o acompanhamento foi adiado, conforme LIM-030.
