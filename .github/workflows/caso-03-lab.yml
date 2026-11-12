@@ -18,7 +18,6 @@ jobs:
 
   verify:
     runs-on: ubuntu-24.04
-    needs: build
     steps:
       - run: echo etapa experimental
       - uses: actions/download-artifact@v4
