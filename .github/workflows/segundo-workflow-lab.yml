@@ -1,4 +1,4 @@
-name: Caso 03 de laboratório
+name: Segundo workflow do piloto
 
 on: workflow_dispatch
 
