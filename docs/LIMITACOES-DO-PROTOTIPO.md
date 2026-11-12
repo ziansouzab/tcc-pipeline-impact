@@ -614,9 +614,9 @@ representam o comportamento histórico de um repositório.
 
 A CLI analisa os arquivos que recebeu. No piloto, um script verifica o diff
 completo do PR. A análise é limitada a YAMLs diretamente em `.github/workflows/`
-em PRs do mesmo repositório para a branch de laboratório. Push, scripts e actions
-locais alterados fora desse caminho ficam fora do disparo. Um rename aparece
-como remoção do caminho antigo e inclusão do novo.
+em PRs do mesmo repositório para `main` ou `laboratorio/auditoria`. Push, scripts
+e actions locais alterados fora desse caminho ficam fora do disparo. Um rename
+aparece como remoção do caminho antigo e inclusão do novo.
 
 O piloto usa dois jobs independentes. Um job de auditoria que sirva de barreira
 para a CI e a proteção de sua dependência contra sugestões de remoção ficam

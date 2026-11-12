@@ -120,9 +120,10 @@ Windows, `demo.ps1` audita o caso 03 usando o ambiente `.venv`.
 | Condições suportadas | Procura consumo ativo com uploads anteriores pulados em cenários delimitados |
 | Revisão do paralelismo | Examina a remoção hipotética de uma dependência, considerando relações de dados reconhecidas |
 
-A análise é estática. A branch `laboratorio/auditoria` usa a CLI para auditar
-workflows alterados em PRs de laboratório. A comparação automática e o histórico
-ficam para os próximos marcos. [Roteiro do piloto](docs/PILOTO-AUDITORIA.md).
+A análise é estática. No GitHub Actions, o workflow de auditoria usa a CLI para
+analisar YAMLs alterados em PRs do mesmo repositório destinados a `main` ou
+`laboratorio/auditoria`. A comparação automática e o histórico ficam para os
+próximos marcos. [Roteiro do piloto](docs/PILOTO-AUDITORIA.md).
 
 ## Como interpretar o resultado
 

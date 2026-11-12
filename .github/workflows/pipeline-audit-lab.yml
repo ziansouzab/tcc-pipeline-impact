@@ -3,6 +3,7 @@ name: Laboratório de auditoria de workflows
 on:
   pull_request:
     branches:
+      - main
       - laboratorio/auditoria
 
 permissions:

@@ -1,8 +1,8 @@
 # Próximos passos
 
-A versão atual audita um workflow local e compara duas versões. A branch
-`laboratorio/auditoria` usa a auditoria em PRs controlados com o mesmo núcleo
-de análise e contrato de relatórios. [Roteiro do piloto](PILOTO-AUDITORIA.md).
+A versão atual audita um workflow local e compara duas versões. O workflow do
+GitHub Actions usa o mesmo núcleo para auditar arquivos alterados em PRs para
+`main` ou `laboratorio/auditoria`. [Roteiro do piloto](PILOTO-AUDITORIA.md).
 
 O próximo marco de integração é automatizar a comparação entre as versões de um
 PR. Os requisitos a seguir orientam essa extensão.

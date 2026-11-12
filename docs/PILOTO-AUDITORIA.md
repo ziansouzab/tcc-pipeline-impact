@@ -22,10 +22,10 @@ de `verify`.
 
 ## Execução no GitHub
 
-Abra PRs do mesmo repositório com destino a `laboratorio/auditoria`. O workflow
-`pipeline-audit-lab.yml` tem dois jobs independentes, a CI de laboratório e a
-auditoria. O auditor usa o analisador da revisão base e lê os YAMLs no SHA da
-revisão do PR. A seleção considera o diff completo do PR e os arquivos
+Abra PRs do mesmo repositório com destino a `main` ou `laboratorio/auditoria`.
+O workflow `pipeline-audit-lab.yml` tem dois jobs independentes, a CI de
+laboratório e a auditoria. O auditor usa o analisador da revisão base e lê os
+YAMLs no SHA da revisão do PR. A seleção considera o diff completo do PR e os arquivos
 `.yml` e `.yaml` diretamente em `.github/workflows/`.
 
 Na aba **Checks** do PR, abra a execução de laboratório e consulte o resumo
