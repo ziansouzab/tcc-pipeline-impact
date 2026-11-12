@@ -135,17 +135,45 @@ def prepare(directory, base, head):
     return 0
 
 
-def run_audit(input_file, output_directory):
+def read_github_event():
+    event_name = os.environ.get("GITHUB_EVENT_NAME", "")
+    ref = os.environ.get("GITHUB_REF", "")
+    base_ref = os.environ.get("GITHUB_BASE_REF", "")
+    head_ref = os.environ.get("GITHUB_HEAD_REF", "")
+
+    if not event_name.strip():
+        raise AuditError("GITHUB_EVENT_NAME é obrigatório para usar o evento do GitHub.")
+    if not ref.strip():
+        raise AuditError("GITHUB_REF é obrigatório para usar o evento do GitHub.")
+    if event_name in ("pull_request", "pull_request_target") and not base_ref.strip():
+        raise AuditError("GITHUB_BASE_REF é obrigatório para usar o evento de pull request.")
+
+    context = {
+        "github.event_name": event_name,
+        "github.ref": ref,
+    }
+    if base_ref.strip():
+        context["github.base_ref"] = base_ref
+    if head_ref.strip():
+        context["github.head_ref"] = head_ref
+    return context
+
+
+def run_audit(input_file, output_directory, contexts_path=None):
+    command = [
+        sys.executable,
+        "-m",
+        "pipeline_impact",
+        "audit",
+        str(input_file),
+        "--output",
+        str(output_directory),
+    ]
+    if contexts_path is not None:
+        command.extend(["--contexts", str(contexts_path)])
+
     return subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "pipeline_impact",
-            "audit",
-            str(input_file),
-            "--output",
-            str(output_directory),
-        ],
+        command,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
         check=False,
@@ -155,6 +183,14 @@ def run_audit(input_file, output_directory):
 def audit(directory):
     plan_text = (directory / "plan.json").read_text(encoding="utf-8")
     plan = json.loads(plan_text)
+    contexts_path = None
+    context = None
+    if os.environ.get("PIPELINE_IMPACT_GITHUB_EVENT") == "true":
+        context = read_github_event()
+        contexts_path = directory / "contexts.json"
+        context_text = json.dumps([context], ensure_ascii=False, indent=2)
+        contexts_path.write_text(context_text + "\n", encoding="utf-8")
+
     reports = directory / "reports"
     reports.mkdir()
     summary = [
@@ -163,6 +199,17 @@ def audit(directory):
         f"Revisão auditada {inline_code(plan['head'])}.",
         "",
     ]
+    if context is not None:
+        event_name = inline_code(context["github.event_name"])
+        ref = inline_code(context["github.ref"])
+        summary.append(f"- Evento recebido do GitHub {event_name}, com referência {ref}.")
+        if "github.base_ref" in context:
+            summary.append(f"- Branch de destino {inline_code(context['github.base_ref'])}.")
+        if "github.head_ref" in context:
+            summary.append(f"- Branch de origem {inline_code(context['github.head_ref'])}.")
+        summary.append("- As condições avaliadas descrevem uma execução hipotética nesse contexto.")
+        summary.append("")
+
     failed = False
     for index, change in enumerate(plan["changes"], start=1):
         if change["status"] == "D":
@@ -172,7 +219,7 @@ def audit(directory):
         input_file = directory / "inputs" / f"{report_id}.yml"
         output_directory = directory / "outputs" / report_id
         try:
-            exit_code = run_audit(input_file, output_directory)
+            exit_code = run_audit(input_file, output_directory, contexts_path)
             if exit_code != 0:
                 raise AuditError(f"a CLI retornou {exit_code}")
             json_text = (output_directory / "report.json").read_text(encoding="utf-8")

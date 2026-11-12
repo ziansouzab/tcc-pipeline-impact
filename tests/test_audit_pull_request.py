@@ -23,6 +23,7 @@ class PullRequestAuditTests(unittest.TestCase):
         self.github_output = self.root / "github-output.txt"
         self.script = ROOT / "scripts/audit_pull_request.py"
         self.environment = os.environ.copy()
+        self.environment.pop("PIPELINE_IMPACT_GITHUB_EVENT", None)
         self.environment["GITHUB_OUTPUT"] = str(self.github_output)
         self.environment["GITHUB_STEP_SUMMARY"] = str(self.summary_file)
         self.git("init", "--quiet", "--initial-branch=base")
@@ -167,6 +168,65 @@ class PullRequestAuditTests(unittest.TestCase):
         self.assertIn(".github/workflows/broken.yml", self.read_summary())
         self.assertIn("**1** alerta", self.read_summary())
         self.assertIn(head, self.read_summary())
+
+    def test_audit_uses_github_pull_request_context(self):
+        workflow = self.workflows / "ci.yml"
+        workflow.write_bytes(self.before)
+        base = self.commit("Workflow com dependência")
+        normalized_workflow = self.after.replace(b"\r\n", b"\n")
+        unfiltered_events = b"'on':\n- push\n- pull_request\n"
+        filtered_events = b"'on':\n  pull_request:\n    branches: [release-2026]\n"
+        self.assertIn(unfiltered_events, normalized_workflow)
+        workflow.write_bytes(normalized_workflow.replace(unfiltered_events, filtered_events, 1))
+        head = self.commit("Remove a dependência e filtra a branch do PR")
+        result = self.prepare(base, head)
+        self.assertEqual(0, result.returncode, self.read_summary())
+
+        self.environment["PIPELINE_IMPACT_GITHUB_EVENT"] = "true"
+        self.environment["GITHUB_EVENT_NAME"] = "pull_request"
+        self.environment["GITHUB_REF"] = "refs/pull/42/merge"
+        self.environment["GITHUB_BASE_REF"] = "release-2026"
+        self.environment["GITHUB_HEAD_REF"] = "feature/atualiza-ci"
+        result = self.execute("audit")
+        self.assertEqual(0, result.returncode, self.read_summary())
+
+        expected_context = {
+            "github.event_name": "pull_request",
+            "github.ref": "refs/pull/42/merge",
+            "github.base_ref": "release-2026",
+            "github.head_ref": "feature/atualiza-ci",
+        }
+        expected_contexts = [expected_context]
+        context_text = (self.output / "contexts.json").read_text(encoding="utf-8")
+        self.assertEqual(expected_contexts, json.loads(context_text))
+        reports = self.output / "reports"
+        self.assertFalse((reports / "contexts.json").exists())
+        self.assertFalse((reports / "001/contexts.json").exists())
+        report_text = (reports / "001/report.json").read_text(encoding="utf-8")
+        report = json.loads(report_text)
+        self.assertEqual(expected_contexts, report["analysis"]["contexts_checked"])
+        self.assertIn("Evento recebido do GitHub ` pull_request `", self.read_summary())
+        self.assertIn("Branch de destino ` release-2026 `", self.read_summary())
+        self.assertIn("execução hipotética", self.read_summary())
+
+    def test_audit_reports_missing_github_pull_request_base_ref(self):
+        workflow = self.workflows / "ci.yml"
+        workflow.write_bytes(self.before)
+        base = self.commit("Workflow com dependência")
+        workflow.write_bytes(self.after)
+        head = self.commit("Remove a dependência")
+        result = self.prepare(base, head)
+        self.assertEqual(0, result.returncode, self.read_summary())
+
+        self.environment["PIPELINE_IMPACT_GITHUB_EVENT"] = "true"
+        self.environment["GITHUB_EVENT_NAME"] = "pull_request"
+        self.environment["GITHUB_REF"] = "refs/pull/42/merge"
+        self.environment.pop("GITHUB_BASE_REF", None)
+        result = self.execute("audit")
+        self.assertEqual(1, result.returncode, self.read_summary())
+        self.assertIn("GITHUB_BASE_REF é obrigatório", self.read_summary())
+        self.assertFalse((self.output / "contexts.json").exists())
+        self.assertFalse((self.output / "reports").exists())
 
     def test_warning_does_not_fail_the_audit_and_disappears_after_restoring_order(self):
         workflow = self.workflows / "ci.yml"

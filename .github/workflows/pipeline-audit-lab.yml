@@ -46,6 +46,8 @@ jobs:
       - name: Auditar workflows alterados
         id: audit
         if: steps.prepare.outputs.has_workflows == 'true'
+        env:
+          PIPELINE_IMPACT_GITHUB_EVENT: "true"
         shell: bash
         run: |
           audit_directory="$RUNNER_TEMP/pipeline-audit"
