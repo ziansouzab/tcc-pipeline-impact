@@ -261,6 +261,38 @@ class AnalysisTests(unittest.TestCase):
         report_text = json.dumps(result)
         self.assertNotIn("estimated_savings", report_text)
 
+    def test_step_changes_use_the_same_event_context_in_both_versions(self):
+        old_step = {"name": "Auditoria", "run": "echo comando privado"}
+        new_step = {
+            "name": "Auditoria",
+            "run": "echo comando revisado",
+            "if": "github.event_name == 'push'",
+            "continue-on-error": True,
+        }
+        before = workflow({"ci": simple(steps=[old_step])})
+        after = workflow({"ci": simple(steps=[new_step])})
+        pull_request = {
+            "github.event_name": "pull_request",
+            "github.ref": "refs/pull/7/merge",
+            "github.base_ref": "main",
+        }
+
+        report = compare(before, after, [CONTEXT, pull_request])
+
+        self.assertEqual({"STEP_CHANGE"}, collect_rules(report["changes"]))
+        self.assertEqual(1, len(report["step_changes"]))
+        change = report["step_changes"][0]
+        self.assertEqual("modified", change["change"])
+        self.assertEqual(["run"], change["other_fields"])
+        self.assertEqual({"before": False, "after": True}, change["fields"]["continue-on-error"])
+        self.assertEqual([
+            {"context": CONTEXT, "before": "active", "after": "active"},
+            {"context": pull_request, "before": "active", "after": "skipped"},
+        ], change["context_comparisons"])
+        self.assertNotIn("echo comando", json.dumps(report))
+        self.assertIn("ativo → pulado", markdown(report))
+        self.assertIn("sua falha passa a ser tolerada", markdown(report))
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -189,6 +189,72 @@ def context_text(context: dict) -> str:
     return ", ".join(parts)
 
 
+def step_change_lines(step_changes: list[dict]) -> list[str]:
+    if not step_changes:
+        return []
+
+    titles = {
+        "added": "Step adicionado",
+        "removed": "Step removido",
+        "modified": "Step modificado",
+        "reordered": "Ordem relativa alterada",
+        "unmatched": "Correspondência indeterminada",
+    }
+    states = {
+        "active": "ativo",
+        "skipped": "pulado",
+        "indeterminate": "indeterminado",
+        "event_excluded": "evento excluído pelo workflow",
+    }
+    lines = ["", "## Alterações nos steps", ""]
+    for change in step_changes:
+        job = inline_code(change["job"])
+        title = titles[change["change"]]
+        lines.extend([f"### {title} no job {job}", ""])
+        for side, label in (("before", "Antes"), ("after", "Depois")):
+            position = change[f"{side}_step"]
+            if position is None:
+                continue
+            name = change[f"{side}_name"]
+            line = f"- {label} no step {position}"
+            if name:
+                line += f" ({inline_code(name)})"
+            lines.append(line + ".")
+
+        for field, values in change["fields"].items():
+            before = inline_code(values["before"])
+            after = inline_code(values["after"])
+            lines.append(f"- {inline_code(field)} passou de {before} para {after}.")
+
+        if change["other_fields"]:
+            names = names_as_code(change["other_fields"])
+            lines.append(f"- Outros campos alterados {names}.")
+
+        policy = change["fields"].get("continue-on-error")
+        if policy is not None:
+            if policy["before"] is False and policy["after"] is True:
+                lines.append("- Efeito possível. Se o step falhar, sua falha passa a ser tolerada na conclusão do job.")
+            elif policy["before"] is True and policy["after"] is False:
+                lines.append("- Efeito possível. Se o step falhar, sua falha pode voltar a reprovar o job.")
+            else:
+                lines.append("- A tolerância à falha depende do valor configurado na execução.")
+
+        if change["change"] == "unmatched":
+            lines.append("- O modelo não encontrou uma correspondência única entre as versões.")
+
+        if "context_comparisons" in change:
+            context_comparisons = change["context_comparisons"]
+            if not context_comparisons:
+                lines.append("- A avaliação condicional requer contextos de evento.")
+            for comparison in context_comparisons:
+                context = context_text(comparison["context"])
+                before = states[comparison["before"]]
+                after = states[comparison["after"]]
+                lines.append(f"- Estado modelado no contexto {context} (**{before} → {after}**).")
+        lines.append("")
+    return lines
+
+
 def finding_explanation(finding: dict) -> tuple[str, str, str]:
     rule = finding["rule"]
     evidence = finding["evidence"]
@@ -433,6 +499,7 @@ def markdown(report: dict) -> str:
     else:
         analysis = report["after"]
         lines = comparison_lines(report)
+        lines.extend(step_change_lines(report.get("step_changes", [])))
         findings_title = "## Alertas e oportunidades da versão modificada"
         snapshots = [
             ("Antes", report["before"]),

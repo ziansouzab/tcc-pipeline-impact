@@ -9,6 +9,7 @@ from . import __version__
 from .conditions import states
 from .event_context import event_eligibility
 from .model import Workflow
+from .step_comparison import compare_job_steps
 
 
 SCHEMA_VERSION = "0.4"
@@ -654,8 +655,26 @@ def audit(workflow: Workflow, contexts=None) -> dict:
     }
 
 
+def step_state_in_context(evaluation, job, position):
+    if evaluation["event_status"] == "excluded":
+        return "event_excluded"
+    if evaluation["event_status"] == "indeterminate":
+        return "indeterminate"
+
+    job_states = evaluation["step_states"].get(job, [])
+    index = position - 1
+    if index >= len(job_states):
+        return "indeterminate"
+    if job_states[index] is True:
+        return "active"
+    if job_states[index] is False:
+        return "skipped"
+    return "indeterminate"
+
+
 def compare(before: Workflow, after: Workflow, contexts=None) -> dict:
     changes = []
+    step_changes = []
 
     all_jobs = set(before.jobs)
     all_jobs.update(after.jobs)
@@ -715,6 +734,13 @@ def compare(before: Workflow, after: Workflow, contexts=None) -> dict:
 
                 changes.append(change)
 
+        if old_job["steps"] != new_job["steps"]:
+            sequential = not before.unresolved_job(job) and not after.unresolved_job(job)
+            job_step_changes = compare_job_steps(
+                job, old_job["steps"], new_job["steps"], sequential=sequential
+            )
+            step_changes.extend(job_step_changes)
+
         before_ancestors = before.ancestors(job)
         after_ancestors = after.ancestors(job)
         if before_ancestors != after_ancestors:
@@ -764,6 +790,27 @@ def compare(before: Workflow, after: Workflow, contexts=None) -> dict:
     before_snapshot = snapshot(before, contexts)
     after_snapshot = snapshot(after, contexts)
 
+    for step_change in step_changes:
+        if "if" not in step_change["fields"]:
+            continue
+
+        job = step_change["job"]
+        before_position = step_change["before_step"]
+        after_position = step_change["after_step"]
+        context_comparisons = []
+        context_pairs = zip(
+            before_snapshot["context_evaluations"], after_snapshot["context_evaluations"]
+        )
+        for before_evaluation, after_evaluation in context_pairs:
+            before_state = step_state_in_context(before_evaluation, job, before_position)
+            after_state = step_state_in_context(after_evaluation, job, after_position)
+            context_comparisons.append({
+                "context": before_evaluation["context"],
+                "before": before_state,
+                "after": after_state,
+            })
+        step_change["context_comparisons"] = context_comparisons
+
     summary = {"changes": len(changes)}
     for current_finding in after_snapshot["findings"]:
         kind = current_finding["kind"]
@@ -778,6 +825,7 @@ def compare(before: Workflow, after: Workflow, contexts=None) -> dict:
         "before": before_snapshot,
         "after": after_snapshot,
         "changes": changes,
+        "step_changes": step_changes,
         "summary": summary,
         "assumptions": analysis_assumptions(),
     }
