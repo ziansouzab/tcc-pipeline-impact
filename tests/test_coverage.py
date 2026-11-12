@@ -1,7 +1,7 @@
 import unittest
 
 from pipeline_impact.analyzer import snapshot
-from tests.helpers import artifact, simple, workflow
+from tests.helpers import CONTEXT, CONTEXT_FIXTURES, artifact, simple, workflow
 
 
 def coverage_for(result, analysis):
@@ -63,19 +63,20 @@ class CoverageTests(unittest.TestCase):
         self.assertEqual(1, len(boundaries))
         self.assertEqual({"job": "build", "step": 1}, boundaries[0]["location"])
 
-    def test_event_filters_suspend_contextual_artifact_analysis(self):
+    def test_event_filters_select_compatible_context(self):
         model = workflow({
             "build": simple(steps=[artifact()]),
             "verify": simple("build", steps=[artifact(False)]),
         })
         model.raw["on"] = {"push": {"branches": ["main"]}}
 
-        result = snapshot(model)
+        result = snapshot(model, CONTEXT_FIXTURES)
         coverage = coverage_for(result, "R03_ARTIFACT_CONDITION")
 
-        self.assertEqual("suspended", coverage["status"])
+        self.assertEqual("executed", coverage["status"])
         self.assertTrue(coverage["reasons"])
-        self.assertEqual([], details_for(coverage, "context_examined"))
+        self.assertEqual([CONTEXT], result["contexts_checked"])
+        self.assertEqual(2, len(details_for(coverage, "context_excluded")))
         self.assertEqual([], findings_for(result, "R03_ARTIFACT_CONDITION"))
 
     def test_unknown_producer_condition_records_location_and_context(self):
@@ -86,7 +87,7 @@ class CoverageTests(unittest.TestCase):
             "verify": simple("build", steps=[artifact(False)]),
         })
 
-        result = snapshot(model)
+        result = snapshot(model, CONTEXT_FIXTURES)
         coverage = coverage_for(result, "R03_ARTIFACT_CONDITION")
         examined = details_for(coverage, "context_examined")
         indeterminate = details_for(coverage, "indeterminate_step")
@@ -200,7 +201,7 @@ class CoverageTests(unittest.TestCase):
             "a_consumer": simple(["y_producer", "z_producer"], steps=[{"run": "echo prepare"}, artifact(False)]),
         })
 
-        findings = findings_for(snapshot(model), "R03_ARTIFACT_CONDITION")
+        findings = findings_for(snapshot(model, CONTEXT_FIXTURES), "R03_ARTIFACT_CONDITION")
 
         self.assertTrue(findings)
         for finding in findings:
@@ -219,7 +220,7 @@ class CoverageTests(unittest.TestCase):
         for rule, steps, consumer_step in scenarios:
             with self.subTest(rule=rule):
                 model = workflow({"build": simple(steps=steps)})
-                findings = findings_for(snapshot(model), rule)
+                findings = findings_for(snapshot(model, CONTEXT_FIXTURES), rule)
 
                 self.assertTrue(findings)
                 for finding in findings:

@@ -178,12 +178,6 @@ def parse(text: str, source: str = "<memory>") -> Workflow:
             if not isinstance(event_name, str):
                 raise InputError("Nomes de eventos devem ser textos.")
 
-    if isinstance(triggers, dict):
-        for event_configuration in triggers.values():
-            if event_configuration:
-                limitations.append("Filtros/configurações de eventos: simulação de condições indisponível.")
-                break
-
     for job_id, data in jobs.items():
         if not isinstance(data, dict):
             raise InputError(f"Job {job_id}: esperado mapeamento.")

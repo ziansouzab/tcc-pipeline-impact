@@ -3,7 +3,7 @@ import unittest
 
 from pipeline_impact.analyzer import compare, snapshot
 from pipeline_impact.reporting import markdown
-from tests.helpers import artifact, collect_kinds, collect_rules, simple, workflow
+from tests.helpers import CONTEXT, CONTEXT_FIXTURES, artifact, collect_kinds, collect_rules, simple, workflow
 
 
 class AnalysisTests(unittest.TestCase):
@@ -96,7 +96,7 @@ class AnalysisTests(unittest.TestCase):
             "verify": simple(steps=[artifact(False)]),
         })
         report = compare(broken, broken)
-        self.assertEqual("0.3", report["schema_version"])
+        self.assertEqual("0.4", report["schema_version"])
         self.assertNotIn("resolved_findings", report)
 
         for side in ("before", "after"):
@@ -207,7 +207,7 @@ class AnalysisTests(unittest.TestCase):
             "a": simple(steps=[producer]),
             "b": simple("a", steps=[artifact(False)]),
         })
-        result = snapshot(model)
+        result = snapshot(model, [CONTEXT])
         rules = collect_rules(result["findings"])
         self.assertTrue(result["limitations"])
         self.assertNotIn("R03_ARTIFACT_CONDITION", rules)
@@ -219,7 +219,7 @@ class AnalysisTests(unittest.TestCase):
             "a": simple(steps=[skipped, artifact()]),
             "b": simple("a", steps=[artifact(False)]),
         })
-        result = snapshot(model)
+        result = snapshot(model, [CONTEXT])
         rules = collect_rules(result["findings"])
         self.assertNotIn("R03_ARTIFACT_CONDITION", rules)
 
@@ -241,9 +241,9 @@ class AnalysisTests(unittest.TestCase):
             "b": simple("a", steps=[artifact(False)]),
         })
         model.raw["on"] = {"push": {"branches": ["main"]}}
-        result = snapshot(model)
+        result = snapshot(model, CONTEXT_FIXTURES)
         rules = collect_rules(result["findings"])
-        self.assertEqual([], result["contexts_checked"])
+        self.assertEqual([CONTEXT], result["contexts_checked"])
         self.assertNotIn("R03_ARTIFACT_CONDITION", rules)
 
     def test_future_history_is_not_silently_used(self):

@@ -2,11 +2,13 @@ from pathlib import Path
 
 import yaml
 
+from pipeline_impact.event_context import load_contexts
 from pipeline_impact.model import parse
 
 
 ROOT = Path(__file__).resolve().parents[1]
 CONTEXT = {"github.event_name": "push", "github.ref": "refs/heads/main"}
+CONTEXT_FIXTURES = load_contexts(ROOT / "cases/contexts.json")
 
 
 def workflow(jobs):

@@ -38,7 +38,7 @@ class CliTests(unittest.TestCase):
                 markdown_text = markdown_path.read_text(encoding="utf-8")
                 self.assertIn("```mermaid", markdown_text)
                 self.assertIn("R02_ARTIFACT_ORDER", markdown_text)
-                self.assertEqual("0.3", report["schema_version"])
+                self.assertEqual("0.4", report["schema_version"])
                 self.assertEqual("compare", report["mode"])
 
     def test_fail_on_warning_checks_after_when_workflow_is_unchanged(self):
@@ -197,7 +197,7 @@ class CliTests(unittest.TestCase):
 
             self.assertEqual(0, exit_code)
             self.assertEqual("audit", report["mode"])
-            self.assertEqual("0.3", report["schema_version"])
+            self.assertEqual("0.4", report["schema_version"])
             self.assertEqual(["build", "verify"], report["analysis"]["jobs"])
             self.assertEqual(1, report["summary"]["warning"])
             self.assertNotIn("before", report)
@@ -225,6 +225,24 @@ class CliTests(unittest.TestCase):
             self.assertEqual(0, exit_code)
             self.assertEqual(0, report["summary"]["warning"])
             self.assertEqual([], report["analysis"]["findings"])
+
+    def test_audit_evaluates_only_explicit_contexts(self):
+        workflow_path = ROOT / "cases/05-upload-condicional/after.yml"
+        with tempfile.TemporaryDirectory(dir=ROOT / ".tmp") as output:
+            arguments = ["audit", str(workflow_path), "--output", output]
+            report_path = Path(output) / "report.json"
+            with redirect_stdout(io.StringIO()):
+                self.assertEqual(0, main(arguments))
+            report = json.loads(report_path.read_text(encoding="utf-8"))
+            self.assertEqual([], report["analysis"]["contexts_checked"])
+            self.assertEqual(0, report["summary"]["warning"])
+
+            arguments.extend(["--contexts", str(ROOT / "cases/contexts.json")])
+            with redirect_stdout(io.StringIO()):
+                self.assertEqual(0, main(arguments))
+            report = json.loads(report_path.read_text(encoding="utf-8"))
+            self.assertEqual(3, len(report["analysis"]["contexts_checked"]))
+            self.assertGreater(report["summary"]["warning"], 0)
 
     def test_audit_warning_policy_ignores_opportunities(self):
         scenarios = [

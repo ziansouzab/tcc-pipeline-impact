@@ -5,7 +5,7 @@ from unittest.mock import patch
 from pipeline_impact import __version__
 from pipeline_impact.analyzer import audit, compare, snapshot
 from pipeline_impact.model import load
-from tests.helpers import ROOT, collect_rules
+from tests.helpers import CONTEXT_FIXTURES, ROOT, collect_rules
 
 
 class AuditTests(unittest.TestCase):
@@ -16,9 +16,9 @@ class AuditTests(unittest.TestCase):
         with patch("pipeline_impact.analyzer.snapshot", wraps=snapshot) as tracked_snapshot:
             report = audit(workflow)
 
-        tracked_snapshot.assert_called_once_with(workflow)
+        tracked_snapshot.assert_called_once_with(workflow, None)
         self.assertEqual("audit", report["mode"])
-        self.assertEqual("0.3", report["schema_version"])
+        self.assertEqual("0.4", report["schema_version"])
         self.assertEqual({"warning": 1, "opportunity": 0}, report["summary"])
         self.assertEqual(str(path), report["analysis"]["source"])
 
@@ -37,8 +37,8 @@ class AuditTests(unittest.TestCase):
                 before = load(folder / "before.yml")
                 after = load(folder / "after.yml")
 
-                audit_report = audit(after)
-                comparison_report = compare(before, after)
+                audit_report = audit(after, CONTEXT_FIXTURES)
+                comparison_report = compare(before, after, CONTEXT_FIXTURES)
 
                 self.assertEqual(comparison_report["after"], audit_report["analysis"])
 
@@ -53,7 +53,7 @@ class AuditTests(unittest.TestCase):
         for case_id, filename, expected_rule, expected_presence in cases:
             with self.subTest(case=case_id, file=filename):
                 workflow = load(ROOT / "cases" / case_id / filename)
-                report = audit(workflow)
+                report = audit(workflow, CONTEXT_FIXTURES)
                 rules = collect_rules(report["analysis"]["findings"])
                 self.assertEqual(expected_presence, expected_rule in rules)
 
@@ -62,7 +62,7 @@ class AuditTests(unittest.TestCase):
         metadata = tomllib.loads(project_path.read_text(encoding="utf-8"))
         workflow = load(ROOT / "cases/03-artefato-sem-ordem/before.yml")
 
-        self.assertEqual("0.2.0", __version__)
+        self.assertEqual("0.3.0", __version__)
         self.assertEqual(metadata["project"]["version"], __version__)
         self.assertEqual(__version__, audit(workflow)["tool_version"])
         self.assertEqual(__version__, compare(workflow, workflow)["tool_version"])

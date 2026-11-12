@@ -7,15 +7,11 @@ import re
 
 from . import __version__
 from .conditions import states
+from .event_context import event_eligibility
 from .model import Workflow
 
 
-SCHEMA_VERSION = "0.3"
-CONTEXTS = [
-    {"github.event_name": "push", "github.ref": "refs/heads/main"},
-    {"github.event_name": "push", "github.ref": "refs/heads/feature"},
-    {"github.event_name": "pull_request", "github.ref": "refs/pull/1/merge"},
-]
+SCHEMA_VERSION = "0.4"
 OUTPUT_REF = re.compile(
     r"needs\.([A-Za-z_][A-Za-z0-9_-]*)\.outputs\.([A-Za-z_][A-Za-z0-9_-]*)"
 )
@@ -190,7 +186,7 @@ def precedes(workflow, producer, consumer):
     return producer["job"] in consumer_ancestors
 
 
-def snapshot(workflow: Workflow) -> dict:
+def snapshot(workflow: Workflow, contexts=None) -> dict:
     artifact_observations = []
     uploads, downloads, artifact_limits = artifact_steps(workflow, artifact_observations)
     limits = list(workflow.limitations)
@@ -198,6 +194,7 @@ def snapshot(workflow: Workflow) -> dict:
     findings = []
     data_pairs = set()
     supported_contexts = []
+    context_evaluations = []
     coverage = []
     artifact_scan_incomplete = False
     recognition_status = "executed"
@@ -330,30 +327,37 @@ def snapshot(workflow: Workflow) -> dict:
     condition_details = []
     condition_analysis_partial = artifact_scan_incomplete
     triggers = workflow.raw["on"]
-    if isinstance(triggers, (dict, list)):
-        events = set(triggers)
-    else:
-        events = {triggers}
+    indeterminate_event = False
 
-    filtered_events = False
-    if isinstance(triggers, dict):
-        for event_configuration in triggers.values():
-            if event_configuration:
-                filtered_events = True
-                break
+    if contexts is not None:
+        for context in contexts:
+            eligible, reason = event_eligibility(triggers, context)
+            evaluation = {"context": context, "reason": reason, "step_states": {}}
+            context_evaluations.append(evaluation)
 
-
-    if not filtered_events:
-        for context in CONTEXTS:
-            if context["github.event_name"] not in events:
+            if eligible is None:
+                evaluation["event_status"] = "indeterminate"
+                indeterminate_event = True
+                limits.append(reason)
+                condition_details.append(coverage_detail(
+                    "context_indeterminate", reason, context=context
+                ))
                 continue
 
+            if eligible is False:
+                evaluation["event_status"] = "excluded"
+                condition_details.append(coverage_detail(
+                    "context_excluded", reason, context=context
+                ))
+                continue
+
+            evaluation["event_status"] = "eligible"
             supported_contexts.append(context)
             active_steps, state_limits = states(workflow, context)
             limits.extend(state_limits)
             condition_details.append(coverage_detail(
                 "context_examined",
-                "Estados de steps avaliados no cenário predefinido.",
+                "Estados de steps avaliados sob a premissa de sucesso.",
                 context=context,
             ))
 
@@ -366,9 +370,11 @@ def snapshot(workflow: Workflow) -> dict:
                 ))
 
             for step_key, step_state in active_steps.items():
+                job, index = step_key
+                job_step_states = evaluation["step_states"].setdefault(job, [])
+                job_step_states.append(step_state)
                 if step_state is None:
                     condition_analysis_partial = True
-                    job, index = step_key
                     condition_details.append(coverage_detail(
                         "indeterminate_step",
                         "O estado deste step ficou indeterminado no cenário.",
@@ -456,13 +462,16 @@ def snapshot(workflow: Workflow) -> dict:
 
     condition_status = "executed"
     condition_reasons = ["Os cenários compatíveis foram examinados sob a premissa de sucesso."]
-    if filtered_events:
+    if not contexts:
         condition_status = "suspended"
-        condition_reasons = ["A configuração de eventos inclui filtros ou parâmetros fora dos cenários suportados."]
+        condition_reasons = ["A avaliação condicional requer pelo menos um contexto informado."]
+    elif not supported_contexts and indeterminate_event:
+        condition_status = "suspended"
+        condition_reasons = ["A compatibilidade dos contextos com os gatilhos ficou indeterminada."]
     elif not supported_contexts:
-        condition_status = "suspended"
-        condition_reasons = ["Nenhum cenário predefinido é compatível com os eventos declarados."]
-    elif condition_analysis_partial:
+        condition_status = "not_applicable"
+        condition_reasons = ["Os gatilhos excluem todos os contextos informados."]
+    elif condition_analysis_partial or indeterminate_event:
         condition_status = "partial"
         condition_reasons = ["Há estados, condições ou relações de artefatos que o modelo não conseguiu representar."]
     elif not downloads:
@@ -471,7 +480,7 @@ def snapshot(workflow: Workflow) -> dict:
 
     coverage.append(coverage_entry(
         "R03_ARTIFACT_CONDITION",
-        "Disponibilidade modelada de artefatos nos cenários predefinidos.",
+        "Disponibilidade modelada de artefatos nos contextos informados.",
         condition_status,
         condition_reasons,
         condition_details,
@@ -609,6 +618,7 @@ def snapshot(workflow: Workflow) -> dict:
         "data_relations": data_relation_records,
         "structurally_unordered_pairs": eligible_pairs,
         "contexts_checked": supported_contexts,
+        "context_evaluations": context_evaluations,
         "findings": findings,
         "limitations": sorted(set(limits)),
         "coverage": coverage,
@@ -626,8 +636,8 @@ def analysis_assumptions():
     ]
 
 
-def audit(workflow: Workflow) -> dict:
-    analysis = snapshot(workflow)
+def audit(workflow: Workflow, contexts=None) -> dict:
+    analysis = snapshot(workflow, contexts)
     summary = {"warning": 0, "opportunity": 0}
 
     for current_finding in analysis["findings"]:
@@ -644,7 +654,7 @@ def audit(workflow: Workflow) -> dict:
     }
 
 
-def compare(before: Workflow, after: Workflow) -> dict:
+def compare(before: Workflow, after: Workflow, contexts=None) -> dict:
     changes = []
 
     all_jobs = set(before.jobs)
@@ -751,8 +761,8 @@ def compare(before: Workflow, after: Workflow) -> dict:
                 "affected_jobs": sorted(after.jobs),
             })
 
-    before_snapshot = snapshot(before)
-    after_snapshot = snapshot(after)
+    before_snapshot = snapshot(before, contexts)
+    after_snapshot = snapshot(after, contexts)
 
     summary = {"changes": len(changes)}
     for current_finding in after_snapshot["findings"]:

@@ -38,6 +38,8 @@ def verification_commands():
         "cases/05-upload-condicional/before.yml",
         "--after",
         "cases/05-upload-condicional/after.yml",
+        "--contexts",
+        "cases/contexts.json",
         "--output",
         "reports/demo",
     ]

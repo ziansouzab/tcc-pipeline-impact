@@ -6,6 +6,7 @@ from pathlib import Path
 import sys
 
 from .analyzer import audit, compare
+from .event_context import load_contexts
 from .model import InputError, load
 from .reporting import markdown
 
@@ -41,6 +42,7 @@ def parse_arguments(argv):
         mode = "compare"
 
     parser.add_argument("--output", type=Path, default=Path("reports/latest"), help="Pasta dos relatórios")
+    parser.add_argument("--contexts", type=Path, help="Arquivo JSON com os contextos de evento para análise condicional")
     parser.add_argument(
         "--fail-on-warning",
         action="store_true",
@@ -62,18 +64,23 @@ def main(argv=None) -> int:
             sources.add(args.before.resolve())
             sources.add(args.after.resolve())
 
+        contexts = None
+        if args.contexts is not None:
+            sources.add(args.contexts.resolve())
+            contexts = load_contexts(args.contexts)
+
         for extension in ("md", "json"):
             report_path = args.output / f"report.{extension}"
             if report_path.resolve() in sources:
-                raise InputError("O relatório não pode sobrescrever um workflow de entrada.")
+                raise InputError("O relatório não pode sobrescrever um workflow de entrada ou o arquivo de contextos.")
 
         if args.mode == "audit":
             current_workflow = load(args.workflow)
-            report = audit(current_workflow)
+            report = audit(current_workflow, contexts)
         else:
             before_workflow = load(args.before)
             after_workflow = load(args.after)
-            report = compare(before_workflow, after_workflow)
+            report = compare(before_workflow, after_workflow, contexts)
 
         rendered = markdown(report)
 

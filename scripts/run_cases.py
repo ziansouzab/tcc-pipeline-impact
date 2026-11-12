@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 
 from pipeline_impact.analyzer import compare
+from pipeline_impact.event_context import load_contexts
 from pipeline_impact.model import load
 from pipeline_impact.reporting import markdown
 
@@ -13,11 +14,11 @@ def load_catalog(project_directory):
     return catalog
 
 
-def analyze_case(project_directory, case_id):
+def analyze_case(project_directory, case_id, contexts):
     case_directory = project_directory / "cases" / case_id
     before_workflow = load(case_directory / "before.yml")
     after_workflow = load(case_directory / "after.yml")
-    report = compare(before_workflow, after_workflow)
+    report = compare(before_workflow, after_workflow, contexts)
     return report
 
 
@@ -37,11 +38,12 @@ def write_case_reports(project_directory, case_id, report):
 def main():
     project_directory = Path(__file__).resolve().parents[1]
     catalog = load_catalog(project_directory)
+    contexts = load_contexts(project_directory / "cases/contexts.json")
     summaries = []
 
     for case in catalog:
         case_id = case["id"]
-        report = analyze_case(project_directory, case_id)
+        report = analyze_case(project_directory, case_id, contexts)
         write_case_reports(project_directory, case_id, report)
 
         case_summary = {"id": case_id}

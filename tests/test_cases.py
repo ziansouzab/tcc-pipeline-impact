@@ -3,7 +3,7 @@ import unittest
 
 from pipeline_impact.analyzer import compare
 from pipeline_impact.model import load
-from tests.helpers import ROOT, collect_rules
+from tests.helpers import CONTEXT_FIXTURES, ROOT, collect_rules
 
 
 class DevelopmentCorpusTests(unittest.TestCase):
@@ -17,7 +17,7 @@ class DevelopmentCorpusTests(unittest.TestCase):
                 folder = ROOT / "cases" / case["id"]
                 before_workflow = load(folder / "before.yml")
                 after_workflow = load(folder / "after.yml")
-                result = compare(before_workflow, after_workflow)
+                result = compare(before_workflow, after_workflow, CONTEXT_FIXTURES)
                 expected = case["expected"]
 
                 changes = collect_rules(result["changes"])

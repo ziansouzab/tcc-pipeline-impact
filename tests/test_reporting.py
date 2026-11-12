@@ -3,7 +3,7 @@ import unittest
 from pipeline_impact.analyzer import audit, compare
 from pipeline_impact.model import load
 from pipeline_impact.reporting import markdown
-from tests.helpers import ROOT, artifact, simple, workflow
+from tests.helpers import CONTEXT_FIXTURES, ROOT, artifact, simple, workflow
 
 
 class ReportingTests(unittest.TestCase):
@@ -56,7 +56,7 @@ class ReportingTests(unittest.TestCase):
 
     def test_conditional_artifact_explains_upload_location_and_context(self):
         workflow_path = ROOT / "cases/05-upload-condicional/after.yml"
-        analysis = audit(load(workflow_path))
+        analysis = audit(load(workflow_path), CONTEXT_FIXTURES)
 
         report_text = markdown(analysis)
 
@@ -92,7 +92,7 @@ class ReportingTests(unittest.TestCase):
         invalid_condition = "<script> [outro](https://example.org)"
         private_step = {"run": "echo PRIVATE_REPORT_COMMAND", "if": invalid_condition}
         workflow_model = workflow({"consumer": simple(steps=[download_step, private_step])})
-        analysis = audit(workflow_model)
+        analysis = audit(workflow_model, CONTEXT_FIXTURES)
 
         report_text = markdown(analysis)
 
