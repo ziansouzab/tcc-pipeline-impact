@@ -96,7 +96,7 @@ class AnalysisTests(unittest.TestCase):
             "verify": simple(steps=[artifact(False)]),
         })
         report = compare(broken, broken)
-        self.assertEqual("0.5", report["schema_version"])
+        self.assertEqual("0.6", report["schema_version"])
         self.assertNotIn("resolved_findings", report)
 
         for side in ("before", "after"):
@@ -209,7 +209,12 @@ class AnalysisTests(unittest.TestCase):
         })
         result = snapshot(model, [CONTEXT])
         rules = collect_rules(result["findings"])
-        self.assertTrue(result["limitations"])
+        for record in result["coverage"]:
+            if record["analysis"] == "condition_evaluation":
+                self.assertEqual("partial", record["status"])
+                break
+        else:
+            self.fail("A cobertura das condições está ausente.")
         self.assertNotIn("R03_ARTIFACT_CONDITION", rules)
 
     def test_multiple_producers_one_active_is_enough_in_model(self):

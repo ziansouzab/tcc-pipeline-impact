@@ -6,6 +6,7 @@ import json
 import re
 
 from . import __version__
+from .change_explanations import explain_changes
 from .conditions import states
 from .event_context import event_eligibility
 from .impact_links import (
@@ -15,12 +16,12 @@ from .impact_links import (
     precedes,
     structural_impact_links,
 )
-from .model import Workflow
+from .model import Workflow, same_configuration
 from .needs_references import job_needs_references
 from .step_comparison import compare_job_steps
 
 
-SCHEMA_VERSION = "0.5"
+SCHEMA_VERSION = "0.6"
 DIRECT_NEEDS_RULE = "R06_NEEDS_DIRECT_DEPENDENCY"
 
 
@@ -150,11 +151,16 @@ def artifact_steps(workflow, observations=None):
                 limitations.append(
                     f"Job {job}, step {index + 1}: seletor de artefato dinâmico, múltiplo ou externo."
                 )
-                observations.append(coverage_detail(
+                observation = coverage_detail(
                     "unsupported_selector",
                     "O seletor está fora do modelo de nomes literais individuais.",
                     location=location,
-                ))
+                )
+                if is_upload:
+                    observation["direction"] = "upload"
+                else:
+                    observation["direction"] = "download"
+                observations.append(observation)
                 continue
 
             record = {
@@ -278,6 +284,7 @@ def snapshot(workflow: Workflow, contexts=None) -> dict:
     context_evaluations = []
     coverage = []
     artifact_scan_incomplete = False
+    unrecognized_consumers_possible = False
     recognition_status = "executed"
     recognition_reasons = ["A leitura examina as actions oficiais de upload e download por nome literal."]
 
@@ -288,6 +295,8 @@ def snapshot(workflow: Workflow, contexts=None) -> dict:
         elif result in ("unresolved_job", "unsupported_selector", "invalid_action_reference"):
             recognition_status = "partial"
             artifact_scan_incomplete = True
+            if observation.get("direction") != "upload":
+                unrecognized_consumers_possible = True
 
     if recognition_status == "partial":
         recognition_reasons.append("Há jobs, actions ou seletores fora do reconhecimento.")
@@ -395,76 +404,75 @@ def snapshot(workflow: Workflow, contexts=None) -> dict:
         order_details,
     ))
 
-    condition_details = []
-    condition_analysis_partial = artifact_scan_incomplete
+    scenario_details = []
+    artifact_condition_details = []
+    indeterminate_conditions = False
+    artifact_condition_partial = artifact_scan_incomplete
     triggers = workflow.raw["on"]
     indeterminate_event = False
 
     if contexts is not None:
         for context in contexts:
             eligible, reason = event_eligibility(triggers, context)
-            evaluation = {"context": context, "reason": reason, "step_states": {}}
+            evaluation = {
+                "context": context,
+                "reason": reason,
+                "job_states": {},
+                "step_states": {},
+            }
             context_evaluations.append(evaluation)
 
             if eligible is None:
                 evaluation["event_status"] = "indeterminate"
                 indeterminate_event = True
-                limits.append(reason)
-                condition_details.append(coverage_detail(
+                scenario_details.append(coverage_detail(
                     "context_indeterminate", reason, context=context
                 ))
                 continue
 
             if eligible is False:
                 evaluation["event_status"] = "excluded"
-                condition_details.append(coverage_detail(
+                scenario_details.append(coverage_detail(
                     "context_excluded", reason, context=context
                 ))
                 continue
 
             evaluation["event_status"] = "eligible"
             supported_contexts.append(context)
-            active_steps, state_limits = states(workflow, context)
-            limits.extend(state_limits)
-            condition_details.append(coverage_detail(
+            diagnostics = []
+            active_steps, _ = states(
+                workflow, context, job_states=evaluation["job_states"], diagnostics=diagnostics
+            )
+            scenario_details.append(coverage_detail(
                 "context_examined",
-                "Estados de steps avaliados sob a premissa de sucesso.",
+                "Estados de jobs e steps avaliados sob a premissa de sucesso.",
                 context=context,
             ))
+            for diagnostic in diagnostics:
+                diagnostic["context"] = context
+                scenario_details.append(diagnostic)
 
-            if state_limits:
-                condition_analysis_partial = True
-                condition_details.append(coverage_detail(
-                    "unsupported_condition",
-                    "Há expressões fora do subconjunto interpretado.",
-                    context=context,
-                ))
+            if None in evaluation["job_states"].values():
+                indeterminate_conditions = True
 
             for step_key, step_state in active_steps.items():
-                job, index = step_key
+                job, _ = step_key
                 job_step_states = evaluation["step_states"].setdefault(job, [])
                 job_step_states.append(step_state)
                 if step_state is None:
-                    condition_analysis_partial = True
-                    condition_details.append(coverage_detail(
-                        "indeterminate_step",
-                        "O estado deste step ficou indeterminado no cenário.",
-                        location={"job": job, "step": index + 1},
-                        context=context,
-                    ))
+                    indeterminate_conditions = True
 
             for consumer in downloads:
                 consumer_key = (consumer["job"], consumer["step"])
                 location = {"job": consumer["job"], "step": consumer["step"] + 1}
                 consumer_state = active_steps.get(consumer_key)
-                if consumer_state is not True:
-                    if consumer_state is False:
-                        condition_details.append(coverage_detail(
-                            "consumer_skipped",
-                            "O consumidor está desativado no cenário modelado.",
-                            location=location,
-                            context=context,
-                        ))
+                if consumer_state is False:
+                    artifact_condition_details.append(coverage_detail(
+                        "consumer_skipped",
+                        "O consumidor está desativado no cenário modelado.",
+                        location=location,
+                        context=context,
+                    ))
                     continue
 
                 ordered_producers = []
@@ -474,9 +482,19 @@ def snapshot(workflow: Workflow, contexts=None) -> dict:
                             ordered_producers.append(producer)
 
                 if not ordered_producers:
-                    condition_details.append(coverage_detail(
+                    artifact_condition_details.append(coverage_detail(
                         "no_ordered_producer",
                         "A verificação condicional requer um upload reconhecido com precedência estrutural.",
+                        location=location,
+                        context=context,
+                    ))
+                    continue
+
+                if consumer_state is None:
+                    artifact_condition_partial = True
+                    artifact_condition_details.append(coverage_detail(
+                        "consumer_indeterminate",
+                        "A execução do download ficou indeterminada.",
                         location=location,
                         context=context,
                     ))
@@ -520,41 +538,55 @@ def snapshot(workflow: Workflow, contexts=None) -> dict:
                     )
                     findings.append(condition_finding)
                 elif True not in producer_states:
-                    condition_analysis_partial = True
-                    limits.append(
-                        f"Artefato {consumer['name']}: disponibilidade indeterminada no contexto {context}."
-                    )
-                    condition_details.append(coverage_detail(
+                    artifact_condition_partial = True
+                    artifact_condition_details.append(coverage_detail(
                         "producer_indeterminate",
                         "A disponibilidade modelada do artefato ficou indeterminada.",
                         location=location,
                         context=context,
                     ))
 
-    condition_status = "executed"
-    condition_reasons = ["Os cenários compatíveis foram examinados sob a premissa de sucesso."]
+    scenario_status = "executed"
+    scenario_reasons = ["Os cenários compatíveis foram examinados sob a premissa de sucesso."]
     if not contexts:
-        condition_status = "suspended"
-        condition_reasons = ["A avaliação condicional requer pelo menos um contexto informado."]
+        scenario_status = "suspended"
+        scenario_reasons = ["A avaliação condicional requer pelo menos um contexto informado."]
     elif not supported_contexts and indeterminate_event:
-        condition_status = "suspended"
-        condition_reasons = ["A compatibilidade dos contextos com os gatilhos ficou indeterminada."]
+        scenario_status = "suspended"
+        scenario_reasons = ["A compatibilidade dos contextos com os gatilhos ficou indeterminada."]
     elif not supported_contexts:
+        scenario_status = "not_applicable"
+        scenario_reasons = ["Os gatilhos excluem todos os contextos informados."]
+    elif indeterminate_conditions or indeterminate_event:
+        scenario_status = "partial"
+        scenario_reasons = ["Parte dos estados ou da elegibilidade dos cenários ficou indeterminada."]
+
+    coverage.append(coverage_entry(
+        "condition_evaluation",
+        "Elegibilidade do evento e condições de jobs e steps nos contextos informados.",
+        scenario_status,
+        scenario_reasons,
+        scenario_details,
+    ))
+
+    condition_status = "executed"
+    condition_reasons = ["As transferências reconhecidas foram avaliadas nos cenários compatíveis."]
+    if not downloads and not unrecognized_consumers_possible:
         condition_status = "not_applicable"
-        condition_reasons = ["Os gatilhos excluem todos os contextos informados."]
-    elif condition_analysis_partial or indeterminate_event:
+        condition_reasons = ["Não há consumidores de artefatos reconhecidos no escopo da regra."]
+    elif scenario_status == "suspended" or not supported_contexts:
+        condition_status = scenario_status
+        condition_reasons = scenario_reasons
+    elif artifact_condition_partial or indeterminate_event:
         condition_status = "partial"
-        condition_reasons = ["Há estados, condições ou relações de artefatos que o modelo não conseguiu representar."]
-    elif not downloads:
-        condition_status = "not_applicable"
-        condition_reasons = ["Os estados foram calculados, mas não há consumidores de artefatos reconhecidos."]
+        condition_reasons = ["Há transferências ou cenários relevantes que o modelo não conseguiu representar."]
 
     coverage.append(coverage_entry(
         "R03_ARTIFACT_CONDITION",
         "Disponibilidade modelada de artefatos nos contextos informados.",
         condition_status,
         condition_reasons,
-        condition_details,
+        artifact_condition_details,
     ))
 
     has_concurrency = "concurrency" in workflow.raw
@@ -749,6 +781,14 @@ def step_state_in_context(evaluation, job, position):
     return "indeterminate"
 
 
+def field_changed(before, after, field):
+    if (field in before) != (field in after):
+        return True
+    before_value = before.get(field)
+    after_value = after.get(field)
+    return not same_configuration(before_value, after_value)
+
+
 def compare(before: Workflow, after: Workflow, contexts=None) -> dict:
     changes = []
     step_changes = []
@@ -798,20 +838,24 @@ def compare(before: Workflow, after: Workflow, contexts=None) -> dict:
                 before_value = sorted(before_value)
                 after_value = sorted(after_value)
 
-            if before_value != after_value:
+            if not same_configuration(before_value, after_value):
                 change = {
                     "rule": rule,
                     "job": job,
                     "field": field,
                     "affected_jobs": downstream,
                 }
-                if field in ("needs", "if", "continue-on-error"):
+                if field in ("needs", "if"):
                     change["before"] = before_value
                     change["after"] = after_value
+                elif field == "continue-on-error":
+                    if isinstance(before_value, bool) and isinstance(after_value, bool):
+                        change["before"] = before_value
+                        change["after"] = after_value
 
                 changes.append(change)
 
-        if old_job["steps"] != new_job["steps"]:
+        if not same_configuration(old_job["steps"], new_job["steps"]):
             sequential = not before.unresolved_job(job) and not after.unresolved_job(job)
             job_step_changes = compare_job_steps(
                 job, old_job["steps"], new_job["steps"], sequential=sequential
@@ -829,21 +873,21 @@ def compare(before: Workflow, after: Workflow, contexts=None) -> dict:
                 "affected_jobs": downstream,
             })
 
-        modeled_fields = {"needs", "if", "continue-on-error", "steps", "outputs", "name"}
+        modeled_fields = {"needs", "if", "continue-on-error", "steps", "outputs"}
         all_job_fields = set(old_job)
         all_job_fields.update(new_job)
         unmodeled_fields = all_job_fields.difference(modeled_fields)
 
-        for field in sorted(unmodeled_fields):
-            if old_job.get(field) != new_job.get(field):
+        for field in sorted(unmodeled_fields, key=str):
+            if field_changed(old_job, new_job, field):
                 changes.append({
                     "rule": "UNMODELED_JOB_CHANGE",
                     "job": job,
-                    "field": field,
+                    "field": str(field),
                     "affected_jobs": downstream,
                 })
 
-    if before.raw.get("on") != after.raw.get("on"):
+    if field_changed(before.raw, after.raw, "on"):
         changes.append({
             "rule": "TRIGGER_CHANGE",
             "affected_jobs": sorted(after.jobs),
@@ -851,16 +895,13 @@ def compare(before: Workflow, after: Workflow, contexts=None) -> dict:
 
     all_workflow_fields = set(before.raw)
     all_workflow_fields.update(after.raw)
-    presentation_or_modeled_fields = {"on", "jobs", "name", "run-name"}
-    unmodeled_workflow_fields = all_workflow_fields.difference(
-        presentation_or_modeled_fields
-    )
+    unmodeled_workflow_fields = all_workflow_fields.difference({"on", "jobs"})
 
-    for field in sorted(unmodeled_workflow_fields):
-        if before.raw.get(field) != after.raw.get(field):
+    for field in sorted(unmodeled_workflow_fields, key=str):
+        if field_changed(before.raw, after.raw, field):
             changes.append({
                 "rule": "UNMODELED_WORKFLOW_CHANGE",
-                "field": field,
+                "field": str(field),
                 "affected_jobs": sorted(after.jobs),
             })
 
@@ -907,6 +948,7 @@ def compare(before: Workflow, after: Workflow, contexts=None) -> dict:
         before, after, changes, step_changes, before_snapshot, after_snapshot,
         before_artifacts, after_artifacts, step_pairs,
     ))
+    explain_changes(before, after, changes, step_changes, before_snapshot, after_snapshot)
 
     return {
         "schema_version": SCHEMA_VERSION,

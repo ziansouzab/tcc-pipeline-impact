@@ -76,7 +76,8 @@ class CoverageTests(unittest.TestCase):
         self.assertEqual("executed", coverage["status"])
         self.assertTrue(coverage["reasons"])
         self.assertEqual([CONTEXT], result["contexts_checked"])
-        self.assertEqual(2, len(details_for(coverage, "context_excluded")))
+        conditions = coverage_for(result, "condition_evaluation")
+        self.assertEqual(2, len(details_for(conditions, "context_excluded")))
         self.assertEqual([], findings_for(result, "R03_ARTIFACT_CONDITION"))
 
     def test_unknown_producer_condition_records_location_and_context(self):
@@ -89,8 +90,9 @@ class CoverageTests(unittest.TestCase):
 
         result = snapshot(model, CONTEXT_FIXTURES)
         coverage = coverage_for(result, "R03_ARTIFACT_CONDITION")
-        examined = details_for(coverage, "context_examined")
-        indeterminate = details_for(coverage, "indeterminate_step")
+        conditions = coverage_for(result, "condition_evaluation")
+        examined = details_for(conditions, "context_examined")
+        indeterminate = details_for(conditions, "runtime_value")
         examined_contexts = []
         for detail in examined:
             examined_contexts.append(detail["context"])
@@ -101,10 +103,40 @@ class CoverageTests(unittest.TestCase):
         self.assertTrue(indeterminate)
 
         for detail in indeterminate:
-            self.assertEqual({"job": "build", "step": 1}, detail["location"])
+            self.assertEqual({"job": "build", "step": 1, "field": "if"}, detail["location"])
             self.assertIn(detail["context"], examined_contexts)
 
         self.assertEqual([], findings_for(result, "R03_ARTIFACT_CONDITION"))
+
+    def test_unrelated_runtime_value_does_not_change_artifact_rule_coverage(self):
+        dependent_step = {
+            "if": "steps.prepare.outputs.ready == 'true'",
+            "run": "echo test",
+        }
+        model = workflow({
+            "build": simple(steps=[artifact()]),
+            "verify": simple("build", steps=[artifact(False), dependent_step]),
+        })
+
+        result = snapshot(model, [CONTEXT])
+        artifact_coverage = coverage_for(result, "R03_ARTIFACT_CONDITION")
+        conditions = coverage_for(result, "condition_evaluation")
+
+        self.assertEqual("executed", artifact_coverage["status"])
+        self.assertEqual("partial", conditions["status"])
+        self.assertEqual(
+            {"job": "verify", "step": 2, "field": "if"},
+            details_for(conditions, "runtime_value")[0]["location"],
+        )
+
+    def test_upload_without_consumer_does_not_apply_conditional_artifact_rule(self):
+        upload = artifact(name="${{ vars.artifact }}")
+        model = workflow({"build": simple(steps=[upload])})
+
+        result = snapshot(model, [CONTEXT])
+        coverage = coverage_for(result, "R03_ARTIFACT_CONDITION")
+
+        self.assertEqual("not_applicable", coverage["status"])
 
     def test_existing_guards_explain_parallel_review_suspension(self):
         scenarios = [

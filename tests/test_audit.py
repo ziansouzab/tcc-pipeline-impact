@@ -18,7 +18,7 @@ class AuditTests(unittest.TestCase):
 
         tracked_snapshot.assert_called_once_with(workflow, None)
         self.assertEqual("audit", report["mode"])
-        self.assertEqual("0.5", report["schema_version"])
+        self.assertEqual("0.6", report["schema_version"])
         self.assertEqual({"warning": 1, "opportunity": 0}, report["summary"])
         self.assertEqual(str(path), report["analysis"]["source"])
 
@@ -62,7 +62,7 @@ class AuditTests(unittest.TestCase):
         metadata = tomllib.loads(project_path.read_text(encoding="utf-8"))
         workflow = load(ROOT / "cases/03-artefato-sem-ordem/before.yml")
 
-        self.assertEqual("0.4.0", __version__)
+        self.assertEqual("0.5.0", __version__)
         self.assertEqual(metadata["project"]["version"], __version__)
         self.assertEqual(__version__, audit(workflow)["tool_version"])
         self.assertEqual(__version__, compare(workflow, workflow)["tool_version"])

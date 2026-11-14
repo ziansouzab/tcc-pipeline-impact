@@ -60,6 +60,26 @@ def condition(value: Any) -> str | None:
     return value.strip()
 
 
+def same_configuration(before, after):
+    if type(before) is not type(after):
+        return False
+    if isinstance(before, dict):
+        if before.keys() != after.keys():
+            return False
+        for key, value in before.items():
+            if not same_configuration(value, after[key]):
+                return False
+        return True
+    if isinstance(before, list):
+        if len(before) != len(after):
+            return False
+        for previous, current in zip(before, after):
+            if not same_configuration(previous, current):
+                return False
+        return True
+    return before == after
+
+
 @dataclass
 class Workflow:
     source: str

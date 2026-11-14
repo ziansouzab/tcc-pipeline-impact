@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from .model import same_configuration
+
 
 REPORTED_FIELDS = ("name", "if", "continue-on-error", "uses")
 
@@ -163,7 +165,7 @@ def step_fields(before, after):
     for field in available_fields:
         if field in REPORTED_FIELDS:
             continue
-        if field not in before or field not in after or before[field] != after[field]:
+        if field not in before or field not in after or not same_configuration(before[field], after[field]):
             other_fields.add(str(field))
     return fields, sorted(other_fields)
 
@@ -294,7 +296,7 @@ def pair_job_steps(before_steps, after_steps):
 
 
 def compare_job_steps(job, before_steps, after_steps, *, sequential=True):
-    if before_steps == after_steps:
+    if same_configuration(before_steps, after_steps):
         return []
 
     matching = pair_job_steps(before_steps, after_steps)
