@@ -8,6 +8,7 @@ COVERAGE_NAMES = {
     "R02_ARTIFACT_ORDER": "Precedência de artefatos",
     "R03_ARTIFACT_CONDITION": "Condições de artefatos",
     "R05_PARALLEL_REVIEW": "Revisão de paralelismo",
+    "R06_NEEDS_DIRECT_DEPENDENCY": "Dependência direta para o contexto needs",
 }
 COVERAGE_STATES = {
     "executed": "Executada",
@@ -307,6 +308,13 @@ def finding_explanation(finding: dict) -> tuple[str, str, str]:
         consequence = "A revisão da dependência pode abrir uma oportunidade de paralelismo."
         return title, explanation, consequence
 
+    if rule == "R06_NEEDS_DIRECT_DEPENDENCY":
+        title = "Referência ao contexto needs sem dependência direta"
+        reference = inline_code(evidence["reference"])
+        explanation = f"O job usa {reference}. {evidence['reason']}"
+        consequence = "O contexto needs do consumidor fica sem a entrada do job referenciado."
+        return title, explanation, consequence
+
     return safe_cell(rule), safe_cell(evidence["reason"]), ""
 
 
@@ -394,6 +402,10 @@ def coverage_detail_line(detail: dict) -> str:
     if artifact:
         artifact_name = inline_code(artifact)
         qualifiers.append(f"artefato {artifact_name}")
+
+    reference = detail.get("reference")
+    if reference:
+        qualifiers.append(f"referência {inline_code(reference)}")
 
     if qualifiers:
         qualifier_text = ", ".join(qualifiers)

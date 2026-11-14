@@ -9,13 +9,12 @@ from . import __version__
 from .conditions import states
 from .event_context import event_eligibility
 from .model import Workflow
+from .needs_references import job_needs_references
 from .step_comparison import compare_job_steps
 
 
 SCHEMA_VERSION = "0.4"
-OUTPUT_REF = re.compile(
-    r"needs\.([A-Za-z_][A-Za-z0-9_-]*)\.outputs\.([A-Za-z_][A-Za-z0-9_-]*)"
-)
+DIRECT_NEEDS_RULE = "R06_NEEDS_DIRECT_DEPENDENCY"
 
 
 def finding(
@@ -187,13 +186,95 @@ def precedes(workflow, producer, consumer):
     return producer["job"] in consumer_ancestors
 
 
+def check_direct_needs(workflow, findings, coverage):
+    jobs_by_lowercase = {}
+    for job in workflow.jobs:
+        jobs_by_lowercase[job.lower()] = job
+
+    required_pairs = set()
+    details = []
+    for consumer, job_data in workflow.jobs.items():
+        direct_dependencies = job_data["needs"]
+        for position, field, referenced_job, reference in job_needs_references(job_data):
+            producer = jobs_by_lowercase.get(referenced_job.lower(), referenced_job)
+            required_pairs.add((producer, consumer))
+            location = {"job": consumer, "field": field}
+            if position is not None:
+                location["step"] = position
+
+            if producer in direct_dependencies:
+                detail = coverage_detail(
+                    "direct_dependency_declared",
+                    "A referência tem a dependência direta exigida.",
+                    location=location,
+                )
+                detail["reference"] = reference
+                details.append(detail)
+                continue
+
+            involved_jobs = [consumer]
+            if producer == consumer:
+                reason = "O job tenta ler a própria entrada no contexto needs."
+                suggestion = "Revise a referência para usar o contexto adequado dentro do próprio job."
+            elif producer not in workflow.jobs:
+                reason = "O job referenciado não existe neste workflow."
+                suggestion = "Confira o identificador do produtor e a dependência direta do consumidor."
+            else:
+                involved_jobs.append(producer)
+                reason = "O job referenciado não está nas dependências diretas do consumidor."
+                if consumer in workflow.ancestors(producer):
+                    suggestion = "Revise a referência. Declarar o produtor em needs criaria uma dependência circular."
+                else:
+                    suggestion = "Declare o produtor diretamente em needs ou revise a referência."
+
+            evidence = {
+                "producer_job": producer,
+                "reference": reference,
+                "reason": reason,
+                "consumer_field": field,
+            }
+            if position is not None:
+                evidence["consumer_step"] = position
+
+            findings.append(finding(
+                DIRECT_NEEDS_RULE,
+                "warning",
+                sorted(involved_jobs),
+                evidence,
+                suggestion=suggestion,
+                location=location,
+            ))
+            detail = coverage_detail(
+                "missing_direct_dependency",
+                reason,
+                location=location,
+            )
+            detail["reference"] = reference
+            details.append(detail)
+
+    status = "executed"
+    reasons = ["As referências literais reconhecidas foram confrontadas com as dependências diretas."]
+    if not details:
+        status = "not_applicable"
+        reasons = ["Nenhuma referência literal a output ou resultado foi reconhecida."]
+
+    coverage.append(coverage_entry(
+        DIRECT_NEEDS_RULE,
+        "Dependências diretas para referências literais a outputs e resultados no contexto needs.",
+        status,
+        reasons,
+        details,
+    ))
+    return required_pairs
+
+
 def snapshot(workflow: Workflow, contexts=None) -> dict:
     artifact_observations = []
     uploads, downloads, artifact_limits = artifact_steps(workflow, artifact_observations)
     limits = list(workflow.limitations)
     limits.extend(artifact_limits)
     findings = []
-    data_pairs = set()
+    artifact_pairs = set()
     supported_contexts = []
     context_evaluations = []
     coverage = []
@@ -221,17 +302,7 @@ def snapshot(workflow: Workflow, contexts=None) -> dict:
     ))
 
 
-    by_lower = {}
-    for job in workflow.jobs:
-        by_lower[job.lower()] = job
-
-    for target, data in workflow.jobs.items():
-        job_text = json.dumps(data)
-        output_references = OUTPUT_REF.findall(job_text)
-
-        for source, output_name in output_references:
-            source = by_lower.get(source.lower(), source)
-            data_pairs.add((source, target))
+    required_needs_pairs = check_direct_needs(workflow, findings, coverage)
 
     unresolved_jobs = set()
     for job in workflow.jobs:
@@ -249,7 +320,7 @@ def snapshot(workflow: Workflow, contexts=None) -> dict:
                 producers.append(producer)
 
         for producer in producers:
-            data_pairs.add((producer["job"], consumer["job"]))
+            artifact_pairs.add((producer["job"], consumer["job"]))
 
         ordered_producers = []
         for producer in producers:
@@ -511,6 +582,16 @@ def snapshot(workflow: Workflow, contexts=None) -> dict:
 
     if can_review_parallelism:
         for source, target in sorted(workflow.edges):
+            if (source, target) in required_needs_pairs:
+                detail = coverage_detail(
+                    "direct_needs_protected",
+                    "A referência a output ou resultado exige a dependência direta.",
+                )
+                detail["edge"] = [source, target]
+                detail["protected_relation"] = [source, target]
+                parallel_details.append(detail)
+                continue
+
             edges_without_dependency = workflow.edges.copy()
             edges_without_dependency.remove((source, target))
 
@@ -525,11 +606,7 @@ def snapshot(workflow: Workflow, contexts=None) -> dict:
                 continue
 
             breaks_data_relation = False
-            for producer_job, consumer_job in sorted(data_pairs):
-                if producer_job not in workflow.jobs:
-                    continue
-                if consumer_job not in workflow.jobs:
-                    continue
+            for producer_job, consumer_job in sorted(artifact_pairs):
                 if producer_job == consumer_job:
                     continue
 
@@ -586,7 +663,7 @@ def snapshot(workflow: Workflow, contexts=None) -> dict:
 
     coverage.append(coverage_entry(
         "R05_PARALLEL_REVIEW",
-        "Remoção hipotética de arestas e precedência das relações de dados reconhecidas.",
+        "Remoção hipotética de arestas, dependências diretas usadas em needs e precedência de artefatos.",
         parallel_status,
         parallel_reasons,
         parallel_details,
@@ -609,6 +686,7 @@ def snapshot(workflow: Workflow, contexts=None) -> dict:
         edge_records.append([source, target])
 
     data_relation_records = []
+    data_pairs = artifact_pairs.union(required_needs_pairs)
     for producer_job, consumer_job in sorted(data_pairs):
         data_relation_records.append([producer_job, consumer_job])
 
