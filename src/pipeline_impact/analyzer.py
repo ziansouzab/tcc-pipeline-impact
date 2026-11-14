@@ -8,7 +8,13 @@ import re
 from . import __version__
 from .conditions import states
 from .event_context import event_eligibility
-from .impact_links import artifact_positions, matched_steps, precedes, structural_impact_links
+from .impact_links import (
+    artifact_positions,
+    conditional_impact_links,
+    matched_steps,
+    precedes,
+    structural_impact_links,
+)
 from .model import Workflow
 from .needs_references import job_needs_references
 from .step_comparison import compare_job_steps
@@ -897,6 +903,10 @@ def compare(before: Workflow, after: Workflow, contexts=None) -> dict:
     impact_links = structural_impact_links(
         before, after, changes, after_snapshot["findings"], before_artifacts, after_artifacts, step_pairs
     )
+    impact_links.extend(conditional_impact_links(
+        before, after, changes, step_changes, before_snapshot, after_snapshot,
+        before_artifacts, after_artifacts, step_pairs,
+    ))
 
     return {
         "schema_version": SCHEMA_VERSION,

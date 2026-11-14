@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from copy import copy
+
+from .conditions import states
 from .needs_references import job_needs_references
 from .step_comparison import pair_job_steps
 
@@ -162,5 +165,129 @@ def structural_impact_links(before, after, changes, findings, before_artifacts, 
         elif rule == "R06_NEEDS_DIRECT_DEPENDENCY":
             link = direct_needs_loss_link(before, after, finding, removed, step_pairs)
             if link is not None:
+                links.append(link)
+    return links
+
+
+def active_step(evaluation, job, position):
+    job_states = evaluation["step_states"].get(job, [])
+    return position <= len(job_states) and job_states[position - 1] is True
+
+
+def states_with_restored_if(workflow, context, job, position, previous_if):
+    restored_workflow = copy(workflow)
+    restored_workflow.jobs = workflow.jobs.copy()
+    restored_job = workflow.jobs[job].copy()
+    restored_steps = list(restored_job["steps"])
+    restored_step = restored_steps[position - 1].copy()
+    restored_step["if"] = previous_if
+    restored_steps[position - 1] = restored_step
+    restored_job["steps"] = restored_steps
+    restored_workflow.jobs[job] = restored_job
+    restored_states, _ = states(restored_workflow, context)
+    return restored_states
+
+
+def eligible_evaluation_pairs(before_snapshot, after_snapshot):
+    pairs = []
+    evaluations = zip(before_snapshot["context_evaluations"], after_snapshot["context_evaluations"])
+    for previous, current in evaluations:
+        if previous["event_status"] == "eligible" and current["event_status"] == "eligible":
+            pairs.append((previous, current))
+    return pairs
+
+
+def conditional_impact_links(
+    before, after, changes, step_changes, before_snapshot, after_snapshot,
+    before_artifacts, after_artifacts, step_pairs,
+):
+    before_uploads, before_downloads = before_artifacts
+    after_uploads, after_downloads = after_artifacts
+    evaluations = eligible_evaluation_pairs(before_snapshot, after_snapshot)
+    if not evaluations:
+        return []
+
+    step_changes_by_job = {}
+    for index, change in enumerate(changes):
+        if change["rule"] == "STEP_CHANGE":
+            step_changes_by_job[change["job"]] = index
+
+    changed_conditions = {}
+    for index, change in enumerate(step_changes):
+        if "if" in change["fields"]:
+            changed_conditions[(change["job"], change["after_step"])] = (index, change)
+
+    links = []
+    restored_states_by_step = {}
+    for finding in after_snapshot["findings"]:
+        if finding["rule"] != "R03_ARTIFACT_CONDITION":
+            continue
+
+        artifact_name = finding["artifact"]
+        location = finding["location"]
+        consumer_job = location["job"]
+        consumer_step = location["step"]
+        consumer = after_downloads[(consumer_job, consumer_step, artifact_name)]
+        old_consumer = previous_artifact(consumer, before_downloads, step_pairs)
+        if old_consumer is None:
+            continue
+
+        context = finding["context"]
+        for evaluation_index, (previous, current) in enumerate(evaluations):
+            if context != current["context"]:
+                continue
+            old_consumer_step = old_consumer["step"] + 1
+            if not active_step(previous, consumer_job, old_consumer_step):
+                continue
+            if not active_step(current, consumer_job, consumer_step):
+                continue
+
+            for producer_location in finding["evidence"]["producer_steps"]:
+                producer_job = producer_location["job"]
+                producer_step = producer_location["step"]
+                condition_change = changed_conditions.get((producer_job, producer_step))
+                if condition_change is None:
+                    continue
+
+                step_change_index, step_change = condition_change
+                producer = after_uploads[(producer_job, producer_step, artifact_name)]
+                old_producer = previous_artifact(producer, before_uploads, step_pairs)
+                if old_producer is None or not precedes(before, old_producer, old_consumer):
+                    continue
+                old_producer_step = old_producer["step"] + 1
+                if old_producer_step != step_change["before_step"]:
+                    continue
+                if not active_step(previous, producer_job, old_producer_step):
+                    continue
+
+                cache_key = (evaluation_index, producer_job, producer_step)
+                if cache_key not in restored_states_by_step:
+                    previous_if = step_change["fields"]["if"]["before"]
+                    restored_states_by_step[cache_key] = states_with_restored_if(
+                        after, context, producer_job, producer_step, previous_if
+                    )
+                restored_states = restored_states_by_step[cache_key]
+                if restored_states.get((producer_job, producer_step - 1)) is not True:
+                    continue
+                if restored_states.get((consumer_job, consumer_step - 1)) is not True:
+                    continue
+
+                evidence = {
+                    "artifact": artifact_name,
+                    "producer_job": producer_job,
+                    "producer_step_before": old_producer_step,
+                    "producer_step_after": producer_step,
+                    "consumer_job": consumer_job,
+                    "consumer_step_before": old_consumer_step,
+                    "consumer_step_after": consumer_step,
+                    "upload_state_before": "active",
+                    "upload_state_after": "skipped",
+                    "upload_state_with_restored_if": "active",
+                }
+                link = make_impact_link(
+                    "upload_condition_changed", step_changes_by_job[producer_job], finding, evidence
+                )
+                link["step_change_index"] = step_change_index
+                link["context"] = context
                 links.append(link)
     return links

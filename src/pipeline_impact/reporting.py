@@ -271,6 +271,19 @@ def impact_link_lines(report: dict) -> list[str]:
         rule = inline_code(finding["rule"])
         location = location_text(link["location"])
         evidence = link["evidence"]
+        if link["type"] == "upload_condition_changed":
+            producer = inline_code(evidence["producer_job"])
+            position = evidence["producer_step_after"]
+            artifact = inline_code(evidence["artifact"])
+            context = context_text(link["context"])
+            lines.append(
+                f"- {rule} em {location}. Alterar o `if` do upload de {artifact} "
+                f"em {producer}, step {position}, fez o upload passar de ativo para pulado "
+                f"no contexto {context}. Restaurar somente o `if` anterior "
+                "reativa o upload no modelo e mantém o download ativo."
+            )
+            continue
+
         source, target = evidence["removed_edge"]
         source_text = inline_code(source)
         target_text = inline_code(target)
