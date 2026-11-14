@@ -96,7 +96,7 @@ class AnalysisTests(unittest.TestCase):
             "verify": simple(steps=[artifact(False)]),
         })
         report = compare(broken, broken)
-        self.assertEqual("0.4", report["schema_version"])
+        self.assertEqual("0.5", report["schema_version"])
         self.assertNotIn("resolved_findings", report)
 
         for side in ("before", "after"):

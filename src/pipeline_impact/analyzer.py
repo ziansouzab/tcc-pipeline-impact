@@ -8,12 +8,13 @@ import re
 from . import __version__
 from .conditions import states
 from .event_context import event_eligibility
+from .impact_links import artifact_positions, matched_steps, precedes, structural_impact_links
 from .model import Workflow
 from .needs_references import job_needs_references
 from .step_comparison import compare_job_steps
 
 
-SCHEMA_VERSION = "0.4"
+SCHEMA_VERSION = "0.5"
 DIRECT_NEEDS_RULE = "R06_NEEDS_DIRECT_DEPENDENCY"
 
 
@@ -176,14 +177,6 @@ def artifact_steps(workflow, observations=None):
             observations.append(observation)
 
     return uploads, downloads, limitations
-
-
-def precedes(workflow, producer, consumer):
-    if producer["job"] == consumer["job"]:
-        return producer["step"] < consumer["step"]
-
-    consumer_ancestors = workflow.ancestors(consumer["job"])
-    return producer["job"] in consumer_ancestors
 
 
 def check_direct_needs(workflow, findings, coverage):
@@ -896,6 +889,15 @@ def compare(before: Workflow, after: Workflow, contexts=None) -> dict:
             summary[kind] = 0
         summary[kind] += 1
 
+    before_uploads, before_downloads, _ = artifact_steps(before)
+    after_uploads, after_downloads, _ = artifact_steps(after)
+    before_artifacts = (artifact_positions(before_uploads), artifact_positions(before_downloads))
+    after_artifacts = (artifact_positions(after_uploads), artifact_positions(after_downloads))
+    step_pairs = matched_steps(before, after)
+    impact_links = structural_impact_links(
+        before, after, changes, after_snapshot["findings"], before_artifacts, after_artifacts, step_pairs
+    )
+
     return {
         "schema_version": SCHEMA_VERSION,
         "tool_version": __version__,
@@ -904,6 +906,7 @@ def compare(before: Workflow, after: Workflow, contexts=None) -> dict:
         "after": after_snapshot,
         "changes": changes,
         "step_changes": step_changes,
+        "impact_links": impact_links,
         "summary": summary,
         "assumptions": analysis_assumptions(),
     }

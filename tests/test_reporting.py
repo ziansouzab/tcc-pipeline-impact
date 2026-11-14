@@ -109,6 +109,7 @@ class ReportingTests(unittest.TestCase):
         analysis["schema_version"] = "0.2"
         analysis["tool_version"] = "0.1.0"
         analysis.pop("mode")
+        analysis.pop("impact_links")
 
         for side in ("before", "after"):
             analysis[side].pop("coverage")
@@ -121,6 +122,7 @@ class ReportingTests(unittest.TestCase):
         self.assertIn("O step consumidor ocupa a posição `2` na sua lista.", report_text)
         self.assertNotIn("**Onde**", report_text)
         self.assertNotIn("## Cobertura da análise", report_text)
+        self.assertNotIn("## Impactos explicados", report_text)
 
 
 if __name__ == "__main__":

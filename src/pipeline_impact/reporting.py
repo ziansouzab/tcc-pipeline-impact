@@ -256,6 +256,43 @@ def step_change_lines(step_changes: list[dict]) -> list[str]:
     return lines
 
 
+def impact_link_lines(report: dict) -> list[str]:
+    links = report.get("impact_links", [])
+    if not links:
+        return []
+
+    findings_by_id = {}
+    for finding in report["after"]["findings"]:
+        findings_by_id[finding["id"]] = finding
+
+    lines = ["", "## Impactos explicados", ""]
+    for link in links:
+        finding = findings_by_id[link["finding_id"]]
+        rule = inline_code(finding["rule"])
+        location = location_text(link["location"])
+        evidence = link["evidence"]
+        source, target = evidence["removed_edge"]
+        source_text = inline_code(source)
+        target_text = inline_code(target)
+        if link["type"] == "artifact_order_lost":
+            artifact = inline_code(evidence["artifact"])
+            effect = (
+                f"O download de {artifact} perdeu a precedência reconhecida. Restaurar "
+                f"{source_text} em `needs` de {target_text} recupera a ordem no modelo."
+            )
+        else:
+            reference = inline_code(evidence["reference"])
+            effect = (
+                f"Remover {source_text} do `needs` direto de {target_text} deixa "
+                f"{reference} sem a entrada do produtor no contexto."
+            )
+            if evidence["order_preserved"]:
+                effect += " A ordem entre os jobs permanece por um caminho indireto."
+
+        lines.append(f"- {rule} em {location}. {effect}")
+    return lines
+
+
 def finding_explanation(finding: dict) -> tuple[str, str, str]:
     rule = finding["rule"]
     evidence = finding["evidence"]
@@ -512,6 +549,7 @@ def markdown(report: dict) -> str:
         analysis = report["after"]
         lines = comparison_lines(report)
         lines.extend(step_change_lines(report.get("step_changes", [])))
+        lines.extend(impact_link_lines(report))
         findings_title = "## Alertas e oportunidades da versão modificada"
         snapshots = [
             ("Antes", report["before"]),

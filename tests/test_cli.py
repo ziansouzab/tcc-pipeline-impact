@@ -38,7 +38,7 @@ class CliTests(unittest.TestCase):
                 markdown_text = markdown_path.read_text(encoding="utf-8")
                 self.assertIn("```mermaid", markdown_text)
                 self.assertIn("R02_ARTIFACT_ORDER", markdown_text)
-                self.assertEqual("0.4", report["schema_version"])
+                self.assertEqual("0.5", report["schema_version"])
                 self.assertEqual("compare", report["mode"])
 
     def test_fail_on_warning_checks_after_when_workflow_is_unchanged(self):
@@ -197,7 +197,7 @@ class CliTests(unittest.TestCase):
 
             self.assertEqual(0, exit_code)
             self.assertEqual("audit", report["mode"])
-            self.assertEqual("0.4", report["schema_version"])
+            self.assertEqual("0.5", report["schema_version"])
             self.assertEqual(["build", "verify"], report["analysis"]["jobs"])
             self.assertEqual(1, report["summary"]["warning"])
             self.assertNotIn("before", report)

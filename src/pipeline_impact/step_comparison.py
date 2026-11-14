@@ -209,10 +209,7 @@ def could_be_same_step(before, after):
     return identity_without_label(before) == identity_without_label(after)
 
 
-def compare_job_steps(job, before_steps, after_steps, *, sequential=True):
-    if before_steps == after_steps:
-        return []
-
+def pair_job_steps(before_steps, after_steps):
     before_ids, before_positions, blocked_before = collect_ids(before_steps)
     after_ids, after_positions, blocked_after = collect_ids(after_steps)
     identifiers = set(before_positions)
@@ -286,6 +283,27 @@ def compare_job_steps(job, before_steps, after_steps, *, sequential=True):
         paired_after,
     )
 
+    return {
+        "pairs": pairs,
+        "paired_after": paired_after,
+        "before_ids": before_ids,
+        "after_ids": after_ids,
+        "blocked_before": blocked_before,
+        "blocked_after": blocked_after,
+    }
+
+
+def compare_job_steps(job, before_steps, after_steps, *, sequential=True):
+    if before_steps == after_steps:
+        return []
+
+    matching = pair_job_steps(before_steps, after_steps)
+    pairs = matching["pairs"]
+    paired_after = matching["paired_after"]
+    before_ids = matching["before_ids"]
+    after_ids = matching["after_ids"]
+    blocked_before = matching["blocked_before"]
+    blocked_after = matching["blocked_after"]
     ambiguous_before = set(blocked_before)
     ambiguous_after = set(blocked_after)
     for before_index, old_step in enumerate(before_steps):
