@@ -6,7 +6,7 @@ cobertura do modelo.
 
 Desenvolvido como protótipo de um TCC em Engenharia de Software.
 
-**Ferramenta** 0.4.0 · **Contrato JSON** 0.5 · **Python** 3.11 ou superior.
+**Ferramenta** 0.5.0 · **Contrato JSON** 0.6 · **Python** 3.11 ou superior.
 
 ## Exemplo
 
@@ -118,7 +118,7 @@ Windows, `demo.ps1` audita o caso 03 usando o ambiente `.venv`.
 O arquivo [cases/contexts.json](cases/contexts.json) fornece cenários sintéticos
 para repetir os exemplos. A opção `--contexts` é facultativa nos dois modos.
 Sem a opção ou com a lista vazia, as verificações estruturais continuam e a
-R03, que depende das condições de execução, é suspensa. Para estudar um caso
+avaliação de condições fica suspensa. Para estudar um caso
 real localmente, informe o evento e as referências pertinentes ao workflow.
 [Formato dos contextos](docs/REGRAS-E-RELATORIO.md#contextos-de-evento).
 
@@ -128,8 +128,8 @@ real localmente, informe o evento e as referências pertinentes ao workflow.
 |---|---|
 | Leitura de YAML | Exige UTF-8 e conteúdo serializável em JSON; preserva `on` e verifica estruturas, dependências e ciclos |
 | Auditoria individual | Apresenta grafo, achados, cenários e cobertura de um workflow |
-| Comparação de versões | Registra mudanças em jobs, dependências, condições e propriedades acompanhadas |
-| Comparação de steps | Detalha mudanças em steps com correspondência reconhecida, adições, remoções e alterações na ordem relativa |
+| Comparação de versões | Explica mudanças de gatilho, dependência, condição e controles como tempo limite, runner, concorrência e tolerância a falhas |
+| Comparação de steps | Detalha mudanças em steps correspondentes, adições, remoções e ordem relativa. Explica condições, tempo limite, tolerância a falhas e trocas de referências a actions |
 | Impactos explicados | Liga mudanças a alertas R02, R03 e R06 quando a relação é demonstrável no modelo estático |
 | Alcance no grafo | Identifica relações transitivas e descendentes potencialmente afetados |
 | Artefatos reconhecidos | Verifica precedência entre uploads e downloads de mesmo nome literal |
@@ -149,8 +149,9 @@ e os relatórios por workflow. A coleta de histórico fica para outro marco.
 
 - `mode` identifica `audit` ou `compare`.
 - `analysis.findings` reúne os achados do workflow auditado.
-- `changes` descreve diferenças entre as configurações no modo `compare`.
-- `step_changes` detalha as mudanças de steps no modo `compare`.
+- `changes` e `step_changes` registram as diferenças e suas `explanations`
+  no modo `compare`. O efeito pode estar explicado, indeterminado ou apenas
+  detectado. Valores de comandos, ambientes e parâmetros ficam no YAML.
 - `impact_links` reúne os vínculos demonstrados entre mudanças e alertas no
   modo `compare`.
 - `context_evaluations` registra a elegibilidade e os estados calculados para
@@ -162,10 +163,9 @@ e os relatórios por workflow. A coleta de histórico fica para outro marco.
 - `coverage` registra o escopo, a situação e os motivos de cada análise.
 - `limitations` informa restrições encontradas durante a análise.
 
-O contrato 0.5 acrescenta `impact_links` à comparação. O campo
-`after.findings` continua reunindo os achados da versão modificada, inclusive
-os alertas para os quais a ferramenta não demonstrou um vínculo. Consulte os
-escopos de `coverage` para interpretar uma análise sem alertas.
+O Markdown começa pelos alertas, oportunidades e mudanças. Quando há evidência
+de que uma alteração explica um alerta, o vínculo aparece junto desse alerta.
+Consulte os escopos de `coverage` para interpretar uma análise sem alertas.
 
 ### Códigos de saída
 

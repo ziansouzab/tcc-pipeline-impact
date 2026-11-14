@@ -95,7 +95,8 @@ Exclusões são registradas no resumo.
 
 Na aba **Checks** do PR, abra a execução de laboratório e consulte o resumo
 do job **Auditoria do PR**. Confira o caminho, o modo, as revisões, as
-contagens e a pasta no artefato de cada arquivo. Baixe
+contagens e a pasta no artefato de cada arquivo. O resumo destaca o primeiro
+alerta e a primeira oportunidade de cada workflow, quando existirem. Baixe
 `pipeline-audit-reports` para ler o `report.md` e o
 `report.json`. Alertas ficam visíveis no relatório em modo de observação.
 Falhas de preparação ou análise aparecem como erro no job de análise. Se a
@@ -107,11 +108,12 @@ independente.
 ### Contexto do evento
 
 O job de auditoria lê `GITHUB_EVENT_NAME`, `GITHUB_REF`,
-`GITHUB_BASE_REF` e `GITHUB_HEAD_REF` fornecidas pelo GitHub Actions.
+`GITHUB_BASE_REF`, `GITHUB_HEAD_REF` e `GITHUB_REPOSITORY`. Do arquivo
+`GITHUB_EVENT_PATH`, extrai somente `pull_request.head.repo.full_name`.
 O script converte esses campos em um contexto JSON e passa o arquivo à CLI
 com `--contexts`. Na comparação, o mesmo contexto é fornecido aos dois YAMLs.
 Os relatórios registram os campos recebidos, a compatibilidade do evento
-com o gatilho do YAML e os estados estimados dos steps em eventos elegíveis.
+com o gatilho do YAML e os estados modelados de jobs e steps em eventos elegíveis.
 [Variáveis do GitHub Actions](https://docs.github.com/en/actions/reference/workflows-and-actions/variables#default-environment-variables).
 
 O evento pertence à execução do piloto. A avaliação dos workflows
@@ -123,14 +125,14 @@ ativas. Na comparação, cada versão é avaliada conforme seus gatilhos.
 ### Validação do contexto em um novo PR
 
 1. Confira se a branch de destino já contém o analisador e o workflow do
-   piloto da versão 0.4.0. O piloto instala a revisão base do PR.
+   piloto da versão 0.5.0. O piloto instala a revisão base do PR.
 2. Em uma branch de teste do mesmo repositório, adicione o workflow abaixo
    em `.github/workflows/contexto-pr-lab.yml` e abra um PR para `main`.
    Para testar com destino a `laboratorio/auditoria`, use esse nome em
    `branches` e na condição do primeiro step.
 3. No resumo, confira o evento `pull_request`, o SHA do YAML auditado
    e as branches de destino e origem. No artefato do YAML de teste, confira
-   `tool_version: "0.4.0"`, `schema_version: "0.5"` e `mode: "audit"`
+   `tool_version: "0.5.0"`, `schema_version: "0.6"` e `mode: "audit"`
    em `report.json`.
    A entrada em `analysis.context_evaluations` deve ter
    `event_status: "eligible"` e `step_states.checks: [true, false]`.
@@ -168,13 +170,28 @@ do arquivo alterado.
 |---|---|---|
 | Controle sem mudança de workflow | Alterar apenas um arquivo da aplicação de laboratório. | A CI roda. O resumo informa a dispensa e a instalação do analisador é pulada. |
 | Perda de precedência | Remover `needs: build` de `verify` no caso 03. | `mode: "compare"`, R02 em `verify`, step 2, e vínculo `artifact_order_lost`. |
-| Restauração | No mesmo PR, restaurar `needs: build` e mudar o campo `name` do workflow. | O arquivo continua no diff e recebe comparação com zero mudanças modeladas e sem R02. |
+| Restauração | No mesmo PR, restaurar `needs: build` e mudar o campo `name` do workflow. | O arquivo continua no diff. A comparação registra o nome alterado e apresenta zero alertas de precedência. |
 | Duas versões com contexto | Alterar um workflow cujo evento inclui `pull_request`. | O JSON registra o mesmo contexto em `before.context_evaluations` e `after.context_evaluations`, com os resultados de elegibilidade de cada versão. |
 | Base avançada | Na base de laboratório, fazer um commit independente que altere o mesmo YAML sem conflito com o PR. | A revisão anterior registrada para a comparação é o ancestral comum. As mudanças da base feitas após a divergência ficam fora do diff analisado. |
 | Dois arquivos | Alterar um workflow em um commit e adicionar outro em um segundo commit. | Um par de relatórios por arquivo, com `mode: "compare"` no modificado e `mode: "audit"` no novo. |
 | Exclusão | Excluir um workflow da base. | O resumo registra a exclusão. Esse caminho não recebe relatórios. |
 | Renomeação | Renomear um workflow da base dentro de `.github/workflows/`. | O caminho antigo é registrado como exclusão e o novo recebe uma auditoria. |
 | Falha em um arquivo | No teste local de integração, preparar um lote com um YAML válido e outro inválido. | A CLI falha para o YAML inválido. Os relatórios bem-sucedidos são preservados, e o job de análise termina com erro. |
+
+### Verificar explicações em PRs separados
+
+Para cada cenário, comece com o YAML anterior na branch de destino e aplique
+apenas a alteração indicada na branch do PR. A aba **Checks** permite abrir
+a execução e baixar os relatórios no artefato `pipeline-audit-reports`.
+
+| Cenário | Alteração | O que conferir |
+|---|---|---|
+| Autoavaliação | No YAML do analisador, incremente o `timeout-minutes` do job `audit`. | O texto mostra os dois limites, um grafo e zero alertas ou oportunidades. A avaliação de condições agrupa os valores de execução dos steps. |
+| Gatilho | Troque o filtro literal de `pull_request.branches` de `main` para `release` em um workflow de teste. | Um PR para `main` passa de elegível a excluído. |
+| Ordem preservada | Retire um `needs` redundante como no caso 04, mantendo o caminho através de um job intermediário. | A mudança explica a ordem preservada e R02 não aparece. |
+| Condição de upload | Restrinja um upload antes incondicional com `startsWith(github.head_ref, 'release/')`. Mantenha o download dependente ativo. | Abra PRs de uma branch com prefixo `release/` e outra sem. O alerta R03 aparece no segundo cenário, em que o upload é pulado. |
+| Revisão de paralelismo | Reproduza o caso 09 com dois jobs e uma dependência sem relação de dados reconhecida. | R05 aparece nas oportunidades e indica a dependência a revisar. |
+| Controles do workflow | Altere `concurrency.cancel-in-progress`, troque `runs-on` para uma expressão e mude `continue-on-error` de um step. | A política de cancelamento e a tolerância a falhas são explicadas. A seleção dinâmica do runner fica indeterminada. |
 
 Se a restauração deixar o arquivo idêntico à base, ele sai do diff completo.
 Mantenha a alteração em `name` para observar a nova comparação.

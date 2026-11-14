@@ -1,6 +1,6 @@
 # Regras e relatório
 
-O contrato JSON 0.5 identifica a auditoria de um workflow e a comparação de
+O contrato JSON 0.6 identifica a auditoria de um workflow e a comparação de
 versões. A auditoria apresenta diagnósticos de uma configuração. A comparação
 acrescenta as mudanças entre configurações e os vínculos demonstrados com
 alertas da versão modificada.
@@ -21,8 +21,8 @@ alertas da versão modificada.
 
 Também são registradas mudanças na lista de steps (`STEP_CHANGE`), nos outputs
 (`OUTPUT_CHANGE`), nos eventos (`TRIGGER_CHANGE`) e em propriedades sem
-interpretação comportamental (`UNMODELED_JOB_CHANGE` e
-`UNMODELED_WORKFLOW_CHANGE`).
+regras próprias (`UNMODELED_JOB_CHANGE` e `UNMODELED_WORKFLOW_CHANGE`).
+Esses registros podem receber explicações pelo campo.
 
 Pares de jobs sem ordem imposta pelo grafo aparecem em
 `structurally_unordered_pairs`. Os casos 11 e 12 mantêm `R06` em
@@ -33,8 +33,8 @@ da versão atual é `R06_NEEDS_DIRECT_DEPENDENCY`.
 
 | Campo | Conteúdo |
 |---|---|
-| `schema_version` | `0.5` |
-| `tool_version` | `0.4.0` |
+| `schema_version` | `0.6` |
+| `tool_version` | `0.5.0` |
 | `mode` | `audit` para auditoria ou `compare` para comparação |
 | `analysis` | Snapshot do workflow auditado, presente no modo `audit` |
 | `before` e `after` | Snapshots das duas configurações, presentes no modo `compare` |
@@ -57,14 +57,35 @@ examinados pelo modelo.
 O campo `source` identifica o arquivo recebido. O relatório não inclui o YAML
 completo nem todos os comandos dos steps.
 
-O schema 0.5 acrescenta `impact_links` à comparação. Diagnósticos
-condicionais dependem dos contextos explicitamente fornecidos.
+O Markdown apresenta alertas, oportunidades e mudanças antes dos grafos.
+Vínculos em `impact_links` são mostrados junto aos alertas. A cobertura igual
+nas duas versões aparece uma vez e fica disponível para consulta.
+
+## Explicações das mudanças
+
+Cada registro de `changes` e `step_changes` contém uma lista `explanations`.
+Cada item informa `field`, `status` e `message`. O estado `explained`
+indica um efeito sustentado pela configuração ou pelo cenário. O estado
+`indeterminate` indica que a interpretação exige dados adicionais ou uma
+correspondência de steps. O estado `detected` indica que o campo mudou.
+
+Quando publicáveis, `before` e `after` mostram valores da configuração.
+`context_comparisons` reúne o mesmo `context` e os estados `before` e
+`after` para gatilhos e condições. Os valores dos comandos, ambientes e
+parâmetros de actions permanecem no YAML. `affected_jobs` descreve o
+alcance potencial no grafo ou o escopo do workflow.
+
+O efeito pode ser estrutural, como a manutenção de uma ordem por um
+caminho indireto, ou declarativo, como a mudança do limite de execução ou
+da política de cancelamento em um grupo de concorrência. A explicação por
+campo e a demonstração de vínculo com um alerta têm evidências próprias.
 
 ## Contextos de evento
 
 A opção `--contexts` recebe um arquivo JSON em UTF-8 com uma lista de objetos.
 Em cada objeto, `github.event_name` deve ser um texto não vazio. Os campos
-opcionais `github.ref`, `github.base_ref`, `github.head_ref` e
+opcionais `github.ref`, `github.base_ref`, `github.head_ref`,
+`github.repository`, `github.event.pull_request.head.repo.full_name` e
 `github.event.before` aceitam texto não vazio ou `null`. Os campos são chaves
 planas. Chaves fora desse conjunto, chaves repetidas e contextos duplicados
 geram erro de entrada. [Arquivo de exemplo](../cases/contexts.json).
@@ -82,14 +103,15 @@ Exemplo de contexto com referências de um pull request.
 ]
 ```
 
-Sem `--contexts` ou com lista vazia, a R03 aparece como suspensa. Com
+Sem `--contexts` ou com lista vazia, a avaliação de condições fica suspensa. Com
 contextos, cada avaliação em `context_evaluations` registra o objeto recebido,
-`event_status`, a justificativa em `reason` e `step_states`. A elegibilidade
-tem três situações possíveis. `eligible` admite a avaliação dos steps.
+`event_status`, a justificativa em `reason`, `job_states` e `step_states`. A elegibilidade
+tem três situações possíveis. `eligible` admite a avaliação de jobs e steps.
 `excluded` indica evento ausente ou excluído pelo gatilho.
 `indeterminate` indica dados insuficientes ou gatilho fora do subconjunto
-interpretado. Em contextos elegíveis, `step_states` organiza os estados por job
-na ordem dos steps, com `true`, `false` e `null` para ativo, pulado e
+interpretado. Em contextos elegíveis, `job_states` associa cada job ao seu
+estado e `step_states` organiza os estados por job na ordem dos steps.
+Os valores `true`, `false` e `null` representam ativo, pulado e
 indeterminado no modelo. O mesmo conjunto de contextos é avaliado para cada
 configuração no modo de comparação.
 
@@ -201,14 +223,15 @@ LIM-031](LIMITACOES-DO-PROTOTIPO.md).
 
 ## Cobertura de cada snapshot
 
-O campo `coverage` contém registros para o reconhecimento de artefatos
+O campo `coverage` contém registros para a avaliação de condições
+(`condition_evaluation`), o reconhecimento de artefatos
 (`artifact_recognition`), a ordem dos artefatos (`R02_ARTIFACT_ORDER`), suas
 condições (`R03_ARTIFACT_CONDITION`), a revisão de paralelismo
 (`R05_PARALLEL_REVIEW`) e as dependências diretas de referências ao contexto
 `needs` (`R06_NEEDS_DIRECT_DEPENDENCY`). Cada registro contém `analysis`,
 `scope`, `status`, `reasons` e `details`. `reasons` é uma lista de textos.
 Cada item de `details` contém `result` e `message` e pode incluir `location`,
-`context`, `edge`, `protected_relation`, `action` ou `artifact`.
+`context`, `edge`, `protected_relation`, `action`, `references` ou `artifact`.
 
 | `status` | Rótulo no relatório | Interpretação |
 |---|---|---|
@@ -219,6 +242,13 @@ Cada item de `details` contém `result` e `message` e pode incluir `location`,
 
 Os detalhes incluem produtores e consumidores reconhecidos, seletores não
 suportados, jobs não resolvidos, contextos examinados e condições indeterminadas.
+Na avaliação de condições, `missing_event_data` indica um campo conhecido
+ausente, `runtime_value` indica um dado indisponível da execução,
+`unsupported_context` indica uma propriedade fora do modelo e
+`unsupported_expression` indica uma expressão fora do subconjunto. A R03
+considera a incerteza que afeta a transferência examinada. Sem consumidores
+pertinentes no reconhecimento, a verificação condicional de artefatos é
+classificada como não aplicável.
 Para paralelismo, registram motivos de suspensão, dependências examinadas,
 ordem preservada por outro caminho e relações de dados protegidas. O detalhe
 `direct_needs_protected` identifica a aresta e a relação cuja referência

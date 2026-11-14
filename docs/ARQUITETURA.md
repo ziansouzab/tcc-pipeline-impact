@@ -4,7 +4,7 @@ O Pipeline Impact audita um workflow local ou compara duas versões. Os módulos
 distinguem entrada, modelagem, interpretação de condições, análise e
 apresentação.
 
-Esta documentação descreve a ferramenta 0.4.0 e o contrato JSON 0.5. O GitHub
+Esta documentação descreve a ferramenta 0.5.0 e o contrato JSON 0.6. O GitHub
 Actions fornece o contexto do evento. O piloto seleciona os workflows do PR
 e usa a CLI para auditar arquivos novos ou comparar as versões dos arquivos
 modificados. [Roteiro do piloto](PILOTO-AUDITORIA.md).
@@ -21,7 +21,8 @@ flowchart TD
     D --> F[compare detalha mudanças e chama snapshot para cada versão]
     E --> G[Relatório estruturado]
     F --> J[Verifica vínculos entre mudanças e alertas]
-    J --> G
+    J --> K[Explica os campos alterados]
+    K --> G
     G --> H[JSON]
     G --> I[reporting apresenta Markdown e grafos]
 ```
@@ -30,7 +31,8 @@ flowchart TD
 `changes`, detalha mudanças de steps em `step_changes` e registra os snapshots
 em `before` e `after`. Cada snapshot contém relações, avaliações dos contextos
 informados, diagnósticos, cobertura e limitações da configuração. A comparação
-registra em `impact_links` os vínculos demonstrados com achados de `after`.
+registra em `impact_links` os vínculos demonstrados com achados de `after`
+e acrescenta `explanations` aos registros de mudanças.
 
 ## Responsabilidades
 
@@ -102,14 +104,15 @@ tratada pela análise de estados.
 Os contextos são fornecidos pela opção `--contexts`. O arquivo de exemplo em
 `cases/contexts.json` contém três cenários sintéticos usados nas verificações
 locais. Em uma execução da CLI sem contexto informado, a análise estrutural
-continua e a R03 fica suspensa. Para cada contexto fornecido, a análise verifica
+continua e a avaliação de condições fica suspensa. Para cada contexto fornecido, a análise verifica
 primeiro a elegibilidade do evento. Os eventos declarados sem filtros são
 suportados. Para `push` e `pull_request`, o subconjunto inclui um único filtro
 `branches` ou `branches-ignore` com nomes literais. Filtros e combinações fora
 desse subconjunto resultam em elegibilidade indeterminada.
 
-No Actions, o script de integração lê o nome e as referências do evento que
-acionou a auditoria e entrega esse contexto à CLI. O contexto descreve o PR do
+No Actions, o script de integração lê o nome, as referências e os
+identificadores de repositório do evento que acionou a auditoria.
+O contexto descreve o PR do
 repositório que hospeda a auditoria. As referências podem ser diferentes das
 usadas em outro repositório de origem do YAML. Os estados calculados descrevem
 uma execução hipotética sob a premissa de sucesso dos comandos ativos.
@@ -120,6 +123,11 @@ uma execução hipotética sob a premissa de sucesso dos comandos ativos.
 
 A comparação acompanha jobs, `needs`, alcance transitivo, `if`,
 `continue-on-error`, steps, outputs e mudanças em campos não interpretados.
+`change_explanations.py` acrescenta ao registro o efeito que o campo e os
+dados disponíveis permitem descrever. Usa a leitura de eventos para os
+gatilhos, o grafo para dependências e os estados dos snapshots para condições.
+Também descreve controles declarados, como timeout, runner e concorrência.
+Campos opacos são identificados pelo nome.
 
 Quando a lista de steps de um job muda, a regra `STEP_CHANGE` registra a
 alteração agregada. A comparação detalhada busca correspondências entre steps

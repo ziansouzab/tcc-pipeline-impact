@@ -1,6 +1,6 @@
 # Catálogo de limitações do protótipo
 
-Atualizado em **14/11/2026**. Contrato de saída **schema 0.5**.
+Atualizado em **14/11/2026**. Contrato de saída **schema 0.6**.
 
 Este é o registro vivo das restrições identificadas durante a leitura do código.
 Ele reúne limites técnicos, escolhas de escopo e integrações previstas. A
@@ -223,12 +223,13 @@ explicar o alerta, como em LIM-002.
 **Tipo:** subconjunto de interpretação.
 
 Reconhecemos strings entre aspas simples, booleanos, igualdade/diferença, negação,
-E, OU, parênteses e quatro funções de status. Não interpretamos toda a linguagem
-de expressões do GitHub Actions.
+E, OU, parênteses e quatro funções de status. `contains`, `startsWith` e
+`endsWith` aceitam dois argumentos textuais, com comparação que ignora
+maiúsculas e minúsculas.
 
-Funções como contains(), comparações numéricas, acesso com colchetes e outras
-construções ficam fora do suporte atual. O padrão lexical também restringe os
-nomes que podem ser reconhecidos.
+Chamadas como `contains` com uma lista, funções como `fromJSON`, comparações
+numéricas e acesso com colchetes ficam fora da avaliação de condições.
+O padrão lexical também restringe os identificadores reconhecidos.
 
 **Impacto:** uma expressão válida pode gerar UnsupportedCondition. Isso não
 demonstra um defeito na configuração.
@@ -258,8 +259,8 @@ explícita não percorrem necessariamente o mesmo caminho.
 **Tipo:** limitação de cobertura contextual.
 
 O analisador avalia somente os contextos informados. O arquivo de teste
-`cases/contexts.json` fornece três cenários sintéticos. A CLI suspende a R03
-quando o arquivo de contextos é omitido ou contém uma lista vazia.
+`cases/contexts.json` fornece três cenários sintéticos. A CLI suspende a
+avaliação de condições quando o arquivo é omitido ou contém uma lista vazia.
 
 **Impacto** As conclusões de cada análise condicional valem para os contextos
 avaliados. Outras branches, tags, inputs ou eventos podem levar a outros estados.
@@ -272,8 +273,9 @@ avaliados. Outras branches, tags, inputs ou eventos podem levar a outros estados
 
 Na CLI, os valores vêm do arquivo fornecido. Na integração com Actions,
 `read_github_event()` extrai o nome do evento, sua referência e, quando
-disponíveis, as referências de origem e destino do PR. O contexto mantém um
-conjunto de chaves planas de evento.
+disponíveis, as referências de origem e destino do PR, o repositório atual e
+o repositório de origem do PR. A cobertura indica dados de evento ausentes,
+contextos e expressões fora do suporte e valores de execução indisponíveis.
 
 Os valores automáticos descrevem o PR do repositório que hospeda o analisador.
 Quando o YAML veio de outro repositório ou foi projetado para outra branch,
@@ -301,8 +303,8 @@ parâmetros fora desse subconjunto.
 
 **Impacto** A indeterminação é registrada por contexto. Se houver pelo menos
 um contexto elegível e outro indeterminado, a cobertura contextual é parcial.
-Se nenhum for elegível e houver indeterminação, a R03 fica suspensa. Se todos
-forem excluídos pelos gatilhos, a regra é não aplicável.
+Se nenhum for elegível e houver indeterminação, a avaliação de condições fica
+suspensa. Se todos forem excluídos pelos gatilhos, fica não aplicável.
 
 **Referência** `event_eligibility()` em `event_context.py` e `snapshot()` em
 `analyzer.py`.
@@ -328,9 +330,10 @@ runner. success=False não é sinônimo de falha real de um comando.
 
 **Tipo:** aproximação da execução dentro do job.
 
-Cada if de step é avaliado usando o padrão success=True. Não acumulamos falhas,
-cancelamentos ou efeitos dos steps anteriores. Depois combinamos o resultado
-com active, o estado do job.
+Em jobs ativos ou indeterminados, cada `if` de step usa o padrão
+`success=True`. O modelo combina o resultado com o estado do job.
+Referências a outputs e resultados dos steps anteriores ficam indeterminadas.
+A cobertura de R03 considera a incerteza pertinente ao consumo de artefatos.
 
 Um step pulado não transforma o job inteiro em desativado no modelo.
 
@@ -491,17 +494,17 @@ structurally_unordered_pairs.
 
 **Tipo:** cobertura comportamental parcial.
 
-Podemos preservar um campo e detectar sua alteração sem interpretar seu efeito.
-UNMODELED_JOB_CHANGE e UNMODELED_WORKFLOW_CHANGE tornam isso explícito.
-
-A comparação deixa de fora os rótulos `name` e `run-name` na raiz e
-`name` no job. Uma alteração restrita a esses rótulos pode deixar
-`changes` vazio.
+O relatório identifica campos alterados no workflow, nos jobs e nos steps
+correspondentes. As explicações dependem do campo e dos dados disponíveis.
+Um timeout literal descreve o limite configurado, sujeito aos limites do
+runner. Uma expressão em `runs-on` pode deixar a seleção indeterminada.
+Para comandos, ambientes, parâmetros e outros campos opacos, a ferramenta
+registra a alteração e mantém os conteúdos no YAML.
 
 **Impacto:** detectar, por exemplo, que um campo de configuração mudou não
 significa prever todas as consequências sobre a execução.
 
-**Referência:** analyzer.py, compare(), campos acompanhados e UNMODELED_*_CHANGE.
+**Referência:** `compare()` em `analyzer.py` e `change_explanations.py`.
 
 ## 4. Comparação e recomendações
 
