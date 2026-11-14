@@ -43,7 +43,7 @@ jobs:
           "$audit_directory/venv/bin/python" -m pip install -r requirements-repro.txt
           "$audit_directory/venv/bin/python" -m pip install --no-deps .
 
-      - name: Auditar workflows alterados
+      - name: Analisar alterações nos workflows
         id: audit
         if: steps.prepare.outputs.has_workflows == 'true'
         env:

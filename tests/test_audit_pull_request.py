@@ -76,7 +76,7 @@ class PullRequestAuditTests(unittest.TestCase):
     def read_summary(self):
         return self.summary_file.read_text(encoding="utf-8")
 
-    def test_prepare_selects_changes_across_pr_and_reads_exact_head_blobs(self):
+    def test_prepare_selects_changes_across_pr_and_reads_exact_blobs(self):
         main_workflow = self.workflows / "ci.yml"
         main_workflow.write_bytes(self.before)
         unchanged = self.workflows / "keep.yml"
@@ -86,6 +86,9 @@ class PullRequestAuditTests(unittest.TestCase):
         merge_base = self.commit("Versão comum")
 
         (self.workflows / "base-only.yml").write_bytes(self.before)
+        base_workflow = self.before.replace(b"Experimento de pipeline", b"Workflow na base", 1)
+        self.assertNotEqual(self.before, base_workflow)
+        main_workflow.write_bytes(base_workflow)
         base = self.commit("Mudança independente na base")
         self.git("switch", "--quiet", "-c", "topic", merge_base)
         main_workflow.write_bytes(self.after)
@@ -116,9 +119,27 @@ class PullRequestAuditTests(unittest.TestCase):
         self.assertEqual(expected_changes, plan["changes"])
         self.assertEqual(self.before, (self.output / "inputs/001.yml").read_bytes())
         self.assertEqual(self.after, (self.output / "inputs/002.yml").read_bytes())
+        self.assertEqual(self.before, (self.output / "inputs/002-before.yml").read_bytes())
+        self.assertFalse((self.output / "inputs/001-before.yml").exists())
         self.assertFalse((self.output / "inputs/003.yml").exists())
+        self.assertFalse((self.output / "inputs/003-before.yml").exists())
         self.assertEqual(self.before, (self.output / "inputs/004.yml").read_bytes())
+        self.assertFalse((self.output / "inputs/004-before.yml").exists())
         self.assertIn("Exclusão registrada", self.read_summary())
+
+        result = self.execute("audit")
+        self.assertEqual(0, result.returncode, self.read_summary())
+        reports = self.output / "reports"
+        expected_modes = {"001": "audit", "002": "compare", "004": "audit"}
+        for report_id, mode in expected_modes.items():
+            report_directory = reports / report_id
+            self.assertTrue((report_directory / "report.md").is_file())
+            report = json.loads((report_directory / "report.json").read_text(encoding="utf-8"))
+            self.assertEqual(mode, report["mode"])
+        self.assertFalse((reports / "003").exists())
+        self.assertIn(f"Antes ` {merge_base} `. Depois ` {head} `.", self.read_summary())
+        self.assertIn("002/report.md", self.read_summary())
+        self.assertIn("002/report.json", self.read_summary())
 
     def test_application_change_does_not_enable_audit(self):
         (self.workflows / "ci.yml").write_bytes(self.before)
@@ -129,7 +150,7 @@ class PullRequestAuditTests(unittest.TestCase):
         result = self.prepare(base, head)
         self.assertEqual(0, result.returncode, self.read_summary())
         self.assertEqual("has_workflows=false\n", self.github_output.read_text(encoding="utf-8"))
-        self.assertIn("Auditoria dispensada", self.read_summary())
+        self.assertIn("Análise dispensada", self.read_summary())
 
     def test_deleted_workflow_is_recorded_without_enabling_audit(self):
         main_workflow = self.workflows / "ci.yml"
@@ -159,8 +180,10 @@ class PullRequestAuditTests(unittest.TestCase):
         self.assertFalse((reports / "001").exists())
         report_text = (reports / "002/report.json").read_text(encoding="utf-8")
         report = json.loads(report_text)
-        self.assertEqual("audit", report["mode"])
-        finding = report["analysis"]["findings"][0]
+        self.assertEqual("compare", report["mode"])
+        self.assertEqual(2, report["summary"]["changes"])
+        self.assertEqual([], report["before"]["findings"])
+        finding = report["after"]["findings"][0]
         self.assertEqual("R02_ARTIFACT_ORDER", finding["rule"])
         self.assertEqual({"job": "verify", "step": 2}, finding["location"])
         self.assertTrue((reports / "002/report.md").is_file())
@@ -169,7 +192,7 @@ class PullRequestAuditTests(unittest.TestCase):
         self.assertIn("**1** alerta", self.read_summary())
         self.assertIn(head, self.read_summary())
 
-    def test_audit_uses_github_pull_request_context(self):
+    def test_comparison_uses_the_same_github_pull_request_context_for_both_revisions(self):
         workflow = self.workflows / "ci.yml"
         workflow.write_bytes(self.before)
         base = self.commit("Workflow com dependência")
@@ -204,7 +227,9 @@ class PullRequestAuditTests(unittest.TestCase):
         self.assertFalse((reports / "001/contexts.json").exists())
         report_text = (reports / "001/report.json").read_text(encoding="utf-8")
         report = json.loads(report_text)
-        self.assertEqual(expected_contexts, report["analysis"]["contexts_checked"])
+        self.assertEqual("compare", report["mode"])
+        self.assertEqual(expected_contexts, report["before"]["contexts_checked"])
+        self.assertEqual(expected_contexts, report["after"]["contexts_checked"])
         self.assertIn("Evento recebido do GitHub ` pull_request `", self.read_summary())
         self.assertIn("Branch de destino ` release-2026 `", self.read_summary())
         self.assertIn("execução hipotética", self.read_summary())
@@ -251,5 +276,6 @@ class PullRequestAuditTests(unittest.TestCase):
         self.assertEqual(0, result.returncode, self.read_summary())
         report_text = (self.output / "reports/001/report.json").read_text(encoding="utf-8")
         report = json.loads(report_text)
-        self.assertEqual(0, report["summary"]["warning"])
+        self.assertEqual("compare", report["mode"])
+        self.assertEqual([], report["after"]["findings"])
         self.assertIn("**0** alerta", self.read_summary())

@@ -79,16 +79,16 @@ def workflow_changes(merge_base, head):
     return changes
 
 
-def read_workflow_blob(head, path):
-    entry = git_output("ls-tree", ["-z", head, "--", f":(literal){path}"])
+def read_workflow_blob(revision, path):
+    entry = git_output("ls-tree", ["-z", revision, "--", f":(literal){path}"])
     if not entry or not entry.endswith(b"\0"):
-        raise AuditError(f"O arquivo {path} está ausente na revisão do PR.")
+        raise AuditError(f"O arquivo {path} está ausente na revisão {revision}.")
     metadata, entry_path = entry[:-1].split(b"\t", 1)
     mode, kind, blob = metadata.split(b" ")
     if entry_path != path.encode("utf-8"):
         raise AuditError(f"Git retornou um caminho diferente de {path}.")
     if kind != b"blob" or mode not in (b"100644", b"100755"):
-        raise AuditError(f"O workflow em {path} deve ser um arquivo regular.")
+        raise AuditError(f"O workflow em {path} deve ser um arquivo regular na revisão {revision}.")
     return git_output("cat-file", ["blob", blob.decode("ascii")])
 
 
@@ -103,7 +103,7 @@ def prepare(directory, base, head):
     inputs.mkdir()
     has_workflows = False
     summary = [
-        "## Preparação da auditoria",
+        "## Preparação da análise de workflows",
         "",
         f"- Revisão base {inline_code(base)}",
         f"- Ancestral comum {inline_code(merge_base)}",
@@ -113,14 +113,23 @@ def prepare(directory, base, head):
     for index, change in enumerate(changes, start=1):
         path = change["path"]
         display_path = inline_code(path)
-        if change["status"] == "D":
+        status = change["status"]
+        if status == "D":
             summary.append(f"- Exclusão registrada para {display_path}.")
             continue
-        workflow = read_workflow_blob(head, path)
-        input_file = inputs / f"{index:03d}.yml"
-        input_file.write_bytes(workflow)
+
+        after_content = read_workflow_blob(head, path)
+        after_file = inputs / f"{index:03d}.yml"
+        if status in ("M", "T"):
+            before_content = read_workflow_blob(merge_base, path)
+            before_file = inputs / f"{index:03d}-before.yml"
+            before_file.write_bytes(before_content)
+            summary.append(f"- Arquivo selecionado para comparação {display_path}.")
+        else:
+            summary.append(f"- Arquivo selecionado para auditoria {display_path}.")
+
+        after_file.write_bytes(after_content)
         has_workflows = True
-        summary.append(f"- Arquivo selecionado para auditoria {display_path}.")
 
     plan = {"base": base, "merge_base": merge_base, "head": head, "changes": changes}
     plan_text = json.dumps(plan, ensure_ascii=False, indent=2)
@@ -130,7 +139,7 @@ def prepare(directory, base, head):
     else:
         write_github_file("GITHUB_OUTPUT", "has_workflows=false")
         summary.append("")
-        summary.append("Auditoria dispensada. Nenhum workflow existente no PR precisa ser analisado.")
+        summary.append("Análise dispensada. Nenhum workflow existente no PR precisa ser analisado.")
     write_github_file("GITHUB_STEP_SUMMARY", "\n".join(summary))
     return 0
 
@@ -159,16 +168,17 @@ def read_github_event():
     return context
 
 
-def run_audit(input_file, output_directory, contexts_path=None):
+def run_analysis(after_file, output_directory, before_file=None, contexts_path=None):
     command = [
         sys.executable,
         "-m",
         "pipeline_impact",
-        "audit",
-        str(input_file),
-        "--output",
-        str(output_directory),
     ]
+    if before_file is None:
+        command.extend(["audit", str(after_file)])
+    else:
+        command.extend(["--before", str(before_file), "--after", str(after_file)])
+    command.extend(["--output", str(output_directory)])
     if contexts_path is not None:
         command.extend(["--contexts", str(contexts_path)])
 
@@ -194,9 +204,9 @@ def audit(directory):
     reports = directory / "reports"
     reports.mkdir()
     summary = [
-        "## Resultado da auditoria",
+        "## Resultado da análise de workflows",
         "",
-        f"Revisão auditada {inline_code(plan['head'])}.",
+        "Os relatórios por arquivo estão no artefato `pipeline-audit-reports`.",
         "",
     ]
     if context is not None:
@@ -212,28 +222,58 @@ def audit(directory):
 
     failed = False
     for index, change in enumerate(plan["changes"], start=1):
-        if change["status"] == "D":
+        status = change["status"]
+        if status == "D":
             continue
+
         report_id = f"{index:03d}"
         display_path = inline_code(change["path"])
-        input_file = directory / "inputs" / f"{report_id}.yml"
+        inputs = directory / "inputs"
+        after_file = inputs / f"{report_id}.yml"
+        before_file = None
+        mode = "audit"
+        mode_label = "auditoria"
+        revisions = f"Revisão atual {inline_code(plan['head'])}."
+        if status in ("M", "T"):
+            before_file = inputs / f"{report_id}-before.yml"
+            mode = "compare"
+            mode_label = "comparação"
+            revisions = f"Antes {inline_code(plan['merge_base'])}. Depois {inline_code(plan['head'])}."
+
         output_directory = directory / "outputs" / report_id
         try:
-            exit_code = run_audit(input_file, output_directory, contexts_path)
+            exit_code = run_analysis(after_file, output_directory, before_file, contexts_path)
             if exit_code != 0:
                 raise AuditError(f"a CLI retornou {exit_code}")
             json_text = (output_directory / "report.json").read_text(encoding="utf-8")
             report = json.loads(json_text)
-            warning_count = report["summary"]["warning"]
+            if report["mode"] != mode:
+                raise AuditError(f"o relatório indica um modo diferente de {mode}")
+            counts = report["summary"]
+            warning_count = counts.get("warning", 0)
+            opportunity_count = counts.get("opportunity", 0)
             if not (output_directory / "report.md").is_file():
                 raise AuditError("o relatório Markdown está ausente")
             output_directory.rename(reports / report_id)
         except (AuditError, KeyError, OSError, ValueError) as error:
             failed = True
-            summary.append(f"- Erro de auditoria em {display_path} ({inline_code(str(error))}).")
+            summary.append(
+                f"- Erro de {mode_label} em {display_path} ({inline_code(str(error))}). {revisions}"
+            )
             continue
+
+        result = f"**{warning_count}** alerta(s) e **{opportunity_count}** oportunidade(s) atuais."
+        if mode == "compare":
+            change_count = counts.get("changes", 0)
+            result = f"**{change_count}** mudança(s) modelada(s). {result}"
+            if "impact_links" in report:
+                impact_count = len(report["impact_links"])
+                result += f" **{impact_count}** impacto(s) explicado(s)."
+
+        markdown_path = inline_code(f"{report_id}/report.md")
+        json_path = inline_code(f"{report_id}/report.json")
         summary.append(
-            f"- {display_path} com **{warning_count}** alerta(s). Pasta do artefato {inline_code(report_id)}."
+            f"- {display_path} em modo de {mode_label}. {revisions} {result} Arquivos {markdown_path} e {json_path}."
         )
     write_github_file("GITHUB_STEP_SUMMARY", "\n".join(summary))
     if failed:
