@@ -4,10 +4,10 @@ O Pipeline Impact audita um workflow local ou compara duas versões. Os módulos
 distinguem entrada, modelagem, interpretação de condições, análise e
 apresentação.
 
-Esta documentação descreve a ferramenta 0.3.0 e o contrato JSON 0.4. O GitHub
-Actions aciona a auditoria dos workflows alterados em PRs e fornece o contexto
-do evento. A seleção automática de versões para comparação e a coleta de
-histórico estão previstas em etapas posteriores. [Próximos passos](PROXIMOS-PASSOS.md).
+Esta documentação descreve a ferramenta 0.4.0 e o contrato JSON 0.5. O GitHub
+Actions fornece o contexto do evento. O piloto seleciona os workflows do PR
+e usa a CLI para auditar arquivos novos ou comparar as versões dos arquivos
+modificados. [Roteiro do piloto](PILOTO-AUDITORIA.md).
 
 ## Fluxo de processamento
 
@@ -20,7 +20,8 @@ flowchart TD
     C --> E[audit chama snapshot uma vez]
     D --> F[compare detalha mudanças e chama snapshot para cada versão]
     E --> G[Relatório estruturado]
-    F --> G
+    F --> J[Verifica vínculos entre mudanças e alertas]
+    J --> G
     G --> H[JSON]
     G --> I[reporting apresenta Markdown e grafos]
 ```
@@ -28,7 +29,8 @@ flowchart TD
 `audit()` usa um snapshot em `analysis`. `compare()` reúne diferenças em
 `changes`, detalha mudanças de steps em `step_changes` e registra os snapshots
 em `before` e `after`. Cada snapshot contém relações, avaliações dos contextos
-informados, diagnósticos, cobertura e limitações da configuração.
+informados, diagnósticos, cobertura e limitações da configuração. A comparação
+registra em `impact_links` os vínculos demonstrados com achados de `after`.
 
 ## Responsabilidades
 
@@ -40,9 +42,11 @@ informados, diagnósticos, cobertura e limitações da configuração.
 | [event_context.py](../src/pipeline_impact/event_context.py) | Validar os contextos de entrada e verificar sua elegibilidade perante os gatilhos |
 | [needs_references.py](../src/pipeline_impact/needs_references.py) | Localizar referências literais a outputs e resultados em expressões de jobs e steps |
 | [analyzer.py](../src/pipeline_impact/analyzer.py) | Auditar, comparar, aplicar verificações e registrar a cobertura |
+| [impact_links.py](../src/pipeline_impact/impact_links.py) | Verificar vínculos entre mudanças e alertas com evidência do modelo |
 | [step_comparison.py](../src/pipeline_impact/step_comparison.py) | Estabelecer a correspondência entre steps e descrever mudanças por job |
 | [reporting.py](../src/pipeline_impact/reporting.py) | Apresentar os resultados e os grafos em Markdown |
 | [__main__.py](../src/pipeline_impact/__main__.py) | Encaminhar `python -m pipeline_impact` para a CLI |
+| [audit_pull_request.py](../scripts/audit_pull_request.py) | Selecionar os YAMLs do PR, chamar a CLI e disponibilizar os relatórios |
 
 O módulo de apresentação usa os resultados calculados para montar os grafos,
 as explicações dos achados e a seção de cobertura. A CLI grava o JSON e o
@@ -124,7 +128,16 @@ avaliada entre steps correspondentes de jobs sequenciais suportados. Quando
 um `if` é alterado em um step identificado, os estados hipotéticos calculados
 para cada contexto são reunidos no relatório de comparação.
 As verificações de artefatos e de revisão do paralelismo são feitas em cada
-snapshot. O relatório não atribui automaticamente a causa de um alerta à mudança.
+snapshot.
+
+A comparação procura evidências de três efeitos no modelo. Para R02, a
+reposição de uma aresta removida deve restabelecer a precedência de um upload
+reconhecido. Para R06, a mesma referência a output ou resultado deve estar
+presente nas versões, e o produtor deve sair do `needs` direto do consumidor.
+Para R03, restaurar o `if` anterior do upload deve voltar a ativá-lo no contexto
+em que o upload passou a ser pulado e o download continuou ativo. A comparação
+usa a localização das etapas e a evidência dos snapshots para sustentar os
+vínculos. [Regras e relatório](REGRAS-E-RELATORIO.md#impactos-explicados).
 
 A revisão de paralelismo remove hipoteticamente uma aresta de uma cópia do
 grafo. A sugestão é descartada se outro caminho mantiver a mesma ordem ou se a

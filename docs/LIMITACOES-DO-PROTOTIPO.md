@@ -1,6 +1,6 @@
 # Catálogo de limitações do protótipo
 
-Atualizado em **14/11/2026**. Contrato de saída **schema 0.4**.
+Atualizado em **14/11/2026**. Contrato de saída **schema 0.5**.
 
 Este é o registro vivo das restrições identificadas durante a leitura do código.
 Ele reúne limites técnicos, escolhas de escopo e integrações previstas. A
@@ -561,8 +561,9 @@ dependências gerais entre steps, como uma referência a `steps.setup.outputs`.
 
 **Tipo:** decisão de escopo, não defeito a corrigir automaticamente.
 
-O schema 0.4 apresenta os achados atuais. A classificação em novos,
-preexistentes ou resolvidos permanece adiada.
+O schema 0.5 apresenta os achados por configuração. A seção de impactos
+explicados indica vínculos específicos com uma alteração. A classificação
+geral de achados como novos, preexistentes ou resolvidos permanece adiada.
 
 O hash de `finding()` usa evidências que podem mudar com a posição. Os campos
 `location` e `coverage` ficam fora do cálculo. O ID serve como referência
@@ -582,10 +583,19 @@ Na comparação, `changes` descreve diferenças da configuração, `affected_job
 reúne descendentes potencialmente afetados e `after.findings` traz o diagnóstico
 atual. A auditoria apresenta `analysis.findings` para o arquivo fornecido.
 
-**Impacto:** não podemos dizer que cada alerta atual foi causado pela alteração,
-nem que todo descendente teve seu comportamento efetivamente prejudicado.
+`impact_links` registra evidências para três tipos de mudança. A comparação
+examina a precedência de artefatos e o acesso literal a `needs` após remoções
+de dependência. Para mudanças de condição, avalia o `if` de um upload
+correspondente no contexto em que o download permanece ativo. O vínculo
+depende de evidência verificável no modelo estático.
 
-**Referência:** analyzer.py, compare(), changes/affected_jobs/after.findings.
+**Impacto:** mudanças fora do subconjunto, relações ambíguas e condições
+indeterminadas podem ficar sem vínculo. Um descendente listado pode estar
+inalterado na execução. O vínculo descreve o efeito no modelo e sua
+confirmação no runner requer observação independente.
+
+**Referência:** `compare()` em `analyzer.py` e [impactos
+explicados](REGRAS-E-RELATORIO.md#impactos-explicados).
 
 ### LIM-032 — Revisão de uma aresta por vez
 
@@ -641,19 +651,19 @@ implementadas. Consulte `coverage` para verificar escopo, situação e motivos.
 
 **Tipo:** estágio da implementação.
 
-A CLI recebe um arquivo local em `audit` e dois na comparação. O piloto usa o
-Git para extrair o YAML do SHA do PR e entrega uma cópia local à CLI. A seleção
-automática de duas versões para comparação e um serviço HTTP são extensões
-futuras.
+A CLI recebe um arquivo local em `audit` e dois na comparação. Para um workflow
+modificado, o piloto usa o Git para obter cópias do ancestral comum e do
+`head` do PR. Para arquivos adicionados, usa o YAML do `head`. Um serviço
+HTTP permanece fora da integração.
 
-No PR, o YAML analisado vem do SHA do head e o contexto pode trazer uma
-referência de merge. Se a base tiver alterações no mesmo arquivo, a cópia
-analisada pode diferir do YAML resultante do merge que o GitHub considera
-no evento padrão de `pull_request`.
+O contexto de `pull_request` pode trazer uma referência de merge. Se a base
+tiver alterações no mesmo arquivo, o YAML analisado no `head` pode diferir do
+YAML que resulta do merge com a base atual.
 [Branch de merge do pull request](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#how-the-merge-branch-affects-your-workflow).
 
-**Impacto:** o usuário ou a integração deve fornecer o caminho da configuração
-auditada e, para comparar, também o caminho da versão anterior.
+**Impacto:** os resultados no piloto descrevem as mudanças propostas no PR
+entre as revisões identificadas no resumo. O uso local requer informar os
+caminhos dos YAMLs.
 
 **Referência:** cli.py, main(); model.py, load(); scripts/audit_pull_request.py.
 
@@ -690,8 +700,9 @@ para a integração em pipelines que exijam essa ordem.
 distingue essa situação de falha ao obter o diff ou ler um arquivo. A leitura do
 workflow que contém o analisador é estática.
 
-O resumo do Actions associa cada relatório ao caminho original e ao SHA. O
-campo `source` do relatório aponta para a cópia local preparada pelo script.
+O resumo do Actions associa cada relatório ao caminho original, ao modo e às
+revisões usadas. O campo `source` de cada configuração aponta para a cópia
+local preparada pelo script.
 Em uma falha de análise, o resumo registra o código de saída da CLI, com
 detalhes como linha e causa do erro disponíveis na execução local.
 

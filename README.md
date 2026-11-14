@@ -6,7 +6,7 @@ cobertura do modelo.
 
 Desenvolvido como protótipo de um TCC em Engenharia de Software.
 
-**Ferramenta** 0.3.0 · **Contrato JSON** 0.4 · **Python** 3.11 ou superior.
+**Ferramenta** 0.4.0 · **Contrato JSON** 0.5 · **Python** 3.11 ou superior.
 
 ## Exemplo
 
@@ -33,7 +33,10 @@ Auditar `after.yml` apresenta **1 alerta `R02_ARTIFACT_ORDER`**, localizado no j
 pode ocorrer antes da disponibilização do artefato.
 
 Comparar `before.yml` com `after.yml` acrescenta **2 registros de mudança** que
-descrevem a dependência direta e o alcance transitivo.
+descrevem a dependência direta e o alcance transitivo. Em **Impactos
+explicados**, o relatório liga o R02 à remoção de `needs: build`. A evidência
+mostra que recolocar essa aresta no grafo restabelece a precedência entre
+`build` e `verify`.
 
 ## Instalação
 
@@ -127,17 +130,19 @@ real localmente, informe o evento e as referências pertinentes ao workflow.
 | Auditoria individual | Apresenta grafo, achados, cenários e cobertura de um workflow |
 | Comparação de versões | Registra mudanças em jobs, dependências, condições e propriedades acompanhadas |
 | Comparação de steps | Detalha mudanças em steps com correspondência reconhecida, adições, remoções e alterações na ordem relativa |
+| Impactos explicados | Liga mudanças a alertas R02, R03 e R06 quando a relação é demonstrável no modelo estático |
 | Alcance no grafo | Identifica relações transitivas e descendentes potencialmente afetados |
 | Artefatos reconhecidos | Verifica precedência entre uploads e downloads de mesmo nome literal |
 | Contexto `needs` | Verifica se referências literais a outputs e resultados têm a dependência direta exigida |
 | Condições suportadas | Procura consumo ativo com uploads anteriores pulados nos contextos de evento fornecidos |
 | Revisão do paralelismo | Examina a remoção hipotética de uma dependência, considerando relações de dados reconhecidas |
 
-A análise é estática. No GitHub Actions, o workflow de auditoria usa a CLI para
-analisar YAMLs alterados em PRs do mesmo repositório destinados a `main` ou
-`laboratorio/auditoria`. O evento recebido do GitHub fornece um contexto para
-avaliar como os workflows auditados se comportariam nessa situação. A
-comparação automática e o histórico ficam para os próximos marcos.
+A análise é estática. No GitHub Actions, o piloto analisa YAMLs alterados em
+PRs do mesmo repositório destinados a `main` ou `laboratorio/auditoria`.
+Compara workflows modificados entre o ancestral comum das branches e o
+`head` do PR, audita arquivos novos e registra exclusões. O contexto de evento
+do PR é usado nas versões analisadas. A execução disponibiliza um resumo
+e os relatórios por workflow. A coleta de histórico fica para outro marco.
 [Roteiro do piloto](docs/PILOTO-AUDITORIA.md).
 
 ## Como interpretar o resultado
@@ -146,6 +151,8 @@ comparação automática e o histórico ficam para os próximos marcos.
 - `analysis.findings` reúne os achados do workflow auditado.
 - `changes` descreve diferenças entre as configurações no modo `compare`.
 - `step_changes` detalha as mudanças de steps no modo `compare`.
+- `impact_links` reúne os vínculos demonstrados entre mudanças e alertas no
+  modo `compare`.
 - `context_evaluations` registra a elegibilidade e os estados calculados para
   cada contexto fornecido.
 - `after.findings` reúne os diagnósticos atuais da versão modificada.
@@ -155,11 +162,10 @@ comparação automática e o histórico ficam para os próximos marcos.
 - `coverage` registra o escopo, a situação e os motivos de cada análise.
 - `limitations` informa restrições encontradas durante a análise.
 
-O contrato 0.4 acrescenta avaliações de contextos e detalhes de steps.
-`STEP_CHANGE` continua registrando em `changes` uma mudança na lista de steps
-por job. O Markdown explica a localização, a evidência, a possível consequência
-e a revisão recomendada. Consulte os escopos de `coverage` para interpretar
-uma análise sem alertas.
+O contrato 0.5 acrescenta `impact_links` à comparação. O campo
+`after.findings` continua reunindo os achados da versão modificada, inclusive
+os alertas para os quais a ferramenta não demonstrou um vínculo. Consulte os
+escopos de `coverage` para interpretar uma análise sem alertas.
 
 ### Códigos de saída
 
@@ -196,7 +202,7 @@ dos workflows analisados.
 | [Regras e relatório](docs/REGRAS-E-RELATORIO.md) | Diagnósticos, campos JSON, exemplos e códigos de saída |
 | [Limitações](docs/LIMITACOES-DO-PROTOTIPO.md) | Catálogo com identificadores estáveis e consequências práticas |
 | [Desenvolvimento](docs/DESENVOLVIMENTO.md) | Testes, casos, scripts e padrão de escrita do código |
-| [Próximos passos](docs/PROXIMOS-PASSOS.md) | Próximo marco de integração experimental com GitHub Actions |
+| [Próximos passos](docs/PROXIMOS-PASSOS.md) | Validação experimental e extensões da integração com GitHub Actions |
 
 ## Estrutura
 

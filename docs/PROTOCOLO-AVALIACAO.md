@@ -1,12 +1,47 @@
 # Protocolo de avaliação do TCC
 
+## Avaliação da análise de impacto em PRs
+
+A unidade de avaliação é uma alteração de workflow. No piloto, use um PR e
+consulte o relatório do workflow modificado. Localmente, execute uma
+comparação por par de YAMLs. A avaliação verifica quais impactos a ferramenta
+identifica e se a explicação liga a alteração ao alerta por meio de evidência.
+
+1. Fixe o commit do analisador e registre versão, schema e data.
+2. Antes de consultar o relatório, registre a mudança, os impactos esperados,
+   a regra, a localização e o contexto. Guarde os SHAs ou hashes das entradas
+   e a justificativa obtida pela inspeção manual da configuração.
+3. Consulte `changes`, `step_changes`, `after.findings` e `impact_links`.
+   Para cada vínculo, confira se a mudança, o alerta, a localização e a
+   evidência correspondem à expectativa. Use os snapshots e a cobertura
+   para interpretar resultados indeterminados.
+4. Separe acertos, omissões e vínculos indevidos. Um alerta correto pode
+   permanecer sem vínculo quando a mudança que lhe deu origem estiver fora
+   do subconjunto. Registre alertas preexistentes na ficha com base nas
+   evidências das duas versões.
+5. No Actions, guarde também o link da execução, o SHA do analisador da base,
+   o ancestral comum, o `head` e os relatórios. Qualquer execução do workflow
+   analisado para observar o impacto deve ser registrada separadamente.
+
+Para conferir a implementação, use os casos 03 (R02), 05 (R03) e LIM-041
+(R06) do [roteiro do piloto](PILOTO-AUDITORIA.md#conferência-local). Inclua
+controles de precedência transitiva preservada, alerta preexistente,
+condição indeterminada e steps com correspondência ambígua. Para a avaliação
+do TCC, monte uma amostra com expectativas próprias, cobrindo impactos
+verificáveis, mudanças legítimas e situações fora do subconjunto. Os casos
+de desenvolvimento servem como verificação da implementação.
+
+## Procedimento preliminar da versão 0.2.0
+
+O registro abaixo conserva o desenho usado no piloto anterior.
+
 A auditoria (A) analisa apenas a versão atual. A comparação (B) recebe a
 versão anterior e a mesma versão atual. O objetivo é verificar a correção
 dos achados e medir quais informações verificáveis sobre a mudança B
 acrescenta a A. Os dois modos compartilham a análise da versão atual, então
 é esperado que produzam os mesmos achados sobre esse arquivo.
 
-## Preparação
+### Preparação
 
 1. Fixe o commit do analisador e registre a versão, o schema e a data.
 2. Use `before.yml` e `after.yml` de cada pasta em `evaluation/`. Os pares
@@ -19,7 +54,7 @@ Os quatro cenários são sintéticos e foram especificados para esta avaliação
 Os 12 pares de `cases/` continuam servindo às verificações de desenvolvimento.
 [Catálogo de limitações, LIM-039](LIMITACOES-DO-PROTOTIPO.md).
 
-## Casos e expectativas
+### Casos e expectativas
 
 | Caso | Par de configurações | Esperado na auditoria da versão atual | Evidência adicional esperada na comparação |
 |---|---|---|---|
@@ -33,7 +68,7 @@ facilitar uma eventual execução controlada. Em E03, a expectativa é sobre o
 reconhecimento da referência ao output. Esses cenários registram expectativas
 anteriores à coleta dos resultados. [Regras e contrato do relatório](REGRAS-E-RELATORIO.md).
 
-## Coleta e conferência
+### Coleta e conferência
 
 - Para cada caso, rode `pipeline-impact audit <atual>` e
   `pipeline-impact --before <anterior> --after <atual>` com diretórios de
@@ -52,7 +87,7 @@ Relate os resultados por cenário e explicite o tamanho e a origem sintética
 da amostra. A evidência do piloto documenta o acionamento e a entrega dos
 relatórios. A associação com o histórico de execução fica para outro marco.
 
-## Resultados preliminares
+### Resultados preliminares
 
 As expectativas e os pares foram registrados no commit `a00a9b2` antes da
 execução. A avaliação local usou a versão 0.2.0, schema 0.3, com o núcleo do

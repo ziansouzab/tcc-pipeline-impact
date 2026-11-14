@@ -1,31 +1,17 @@
 # Próximos passos
 
-A versão atual audita um workflow local e compara duas versões. O workflow do
-GitHub Actions usa o mesmo núcleo para auditar arquivos alterados em PRs para
-`main` ou `laboratorio/auditoria`. [Roteiro do piloto](PILOTO-AUDITORIA.md).
+A versão atual audita um workflow local e compara duas versões. O piloto no
+GitHub Actions compara workflows modificados em PRs para `main` ou
+`laboratorio/auditoria`, audita arquivos novos e registra exclusões. O próximo
+marco é reproduzir o fluxo em uma branch de laboratório que já contenha o
+analisador atualizado. [Roteiro do piloto](PILOTO-AUDITORIA.md).
 
-O próximo marco de integração é automatizar a comparação entre as versões de um
-PR. Os requisitos a seguir orientam essa extensão.
+## Extensões da integração
 
-## Integração da comparação no GitHub Actions
-
-Uma alteração em um workflow deve produzir este percurso:
-
-1. Detectar mudanças nos caminhos de pipeline monitorados.
-2. Identificar o arquivo e a revisão que serão analisados. Para uma comparação,
-   identificar as duas versões.
-3. Preparar o ambiente Python e executar a auditoria ou a comparação pela CLI.
-4. Disponibilizar o resumo e os arquivos de relatório para consulta.
-5. Registrar as análises dispensadas e os erros de preparação.
-
-Os caminhos iniciais monitorados serão os workflows `.yml` e `.yaml` de
+O piloto monitora workflows `.yml` e `.yaml` diretamente em
 `.github/workflows/`. Scripts e actions locais poderão ser acrescentados por
-configuração explícita, sem presumir descoberta de todas as dependências.
-
-No PR, a seleção deve considerar as mudanças do conjunto do PR em relação à
-base, e não apenas o último commit. As versões usadas precisam acompanhar a
-evidência produzida. No push, a comparação deve considerar os estados anterior
-e novo informados pelo evento.
+configuração explícita. Uma futura integração por push pode usar os estados
+anterior e novo informados pelo evento.
 
 ## Disparo e preservação da CI
 
@@ -44,26 +30,24 @@ dispensada. Essa dependência deve ser protegida de sugestões de remoção. Ler
 workflow que contém o próprio analisador não provoca recursão, pois a ferramenta
 apenas lê o YAML.
 
-O modo inicial será de observação, disponibilizando os alertas para revisão.
-Qualquer política de bloqueio deve considerar os códigos da CLI e os limites
-das regras; ausência de alerta não é aprovação completa da pipeline.
+O piloto disponibiliza os alertas para revisão em modo de observação.
+Qualquer política futura de bloqueio deve considerar os códigos da CLI e os
+limites das regras.
 
 ## Entradas que exigem tratamento explícito
 
 `audit` exige um workflow existente e não vazio. A comparação exige dois
-arquivos válidos. A integração pode auditar um arquivo adicionado. Para
-exclusões, deverá registrar a ausência do arquivo na revisão atual. Para
-renomeações, deverá identificar os caminhos e as revisões disponíveis.
-
-A integração deve registrar falhas ao obter o diff, a revisão ou o arquivo como
-erros de preparação e indicar quais configurações foram efetivamente analisadas.
+arquivos válidos. O piloto registra exclusões e trata renomeações como exclusão
+e inclusão. Falhas ao obter o diff, a revisão ou o arquivo aparecem como erros
+de preparação.
 
 ## Critérios para ampliar o experimento
 
 - Alteração apenas na aplicação dispensa o analisador e mantém a CI.
-- Alteração em workflow executa a análise com versões identificadas.
-- O caso de artefato sem ordem produz o diagnóstico esperado e relatórios
-  acessíveis.
+- Alteração em workflow executa a análise com o ancestral comum e o
+  `head` identificados.
+- Os casos de R02, R03 e R06 produzem os vínculos esperados, com relatórios
+  acessíveis e controles registrados.
 - Adição, exclusão e renomeação de workflow recebem tratamento explícito.
 - Erro de preparação é distinguido de análise dispensada.
 - A barreira do job inicial não recebe proposta de remoção.
@@ -82,8 +66,8 @@ ausentes não deverão ser misturados nem substituídos por duração zero.
 O histórico poderá contextualizar resultados e durações observados e apoiar a
 priorização dos achados. Uma falha histórica não comprovará a causa de um alerta,
 e dados da versão anterior não comprovarão o comportamento da versão modificada.
-Executar a ferramenta no Actions também não preencherá automaticamente os
-contextos fixos do interpretador.
+O contexto de evento fornecido pelo Actions descreve a execução do piloto.
+A associação com execuções anteriores exige uma coleta separada.
 
 ## Evoluções fora do primeiro marco
 

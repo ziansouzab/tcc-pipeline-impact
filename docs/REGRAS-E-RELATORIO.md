@@ -1,8 +1,9 @@
 # Regras e relatório
 
-O contrato JSON 0.4 identifica a auditoria de um workflow e a comparação de
+O contrato JSON 0.5 identifica a auditoria de um workflow e a comparação de
 versões. A auditoria apresenta diagnósticos de uma configuração. A comparação
-acrescenta as mudanças entre configurações.
+acrescenta as mudanças entre configurações e os vínculos demonstrados com
+alertas da versão modificada.
 
 ## Verificações e resultados
 
@@ -32,13 +33,14 @@ da versão atual é `R06_NEEDS_DIRECT_DEPENDENCY`.
 
 | Campo | Conteúdo |
 |---|---|
-| `schema_version` | `0.4` |
-| `tool_version` | `0.3.0` |
+| `schema_version` | `0.5` |
+| `tool_version` | `0.4.0` |
 | `mode` | `audit` para auditoria ou `compare` para comparação |
 | `analysis` | Snapshot do workflow auditado, presente no modo `audit` |
 | `before` e `after` | Snapshots das duas configurações, presentes no modo `compare` |
 | `changes` | Diferenças nas propriedades acompanhadas e descendentes potencialmente afetados, presentes no modo `compare` |
 | `step_changes` | Detalhes das mudanças nos steps de jobs presentes nas duas versões, disponíveis no modo `compare` |
+| `impact_links` | Vínculos entre mudanças e alertas demonstrados no modelo estático, presentes no modo `compare` |
 | `summary` | Contagens de `warning` e `opportunity` na auditoria. Na comparação, preserva a quantidade de mudanças e os tipos de achados da versão modificada |
 | `assumptions` | Premissas gerais para interpretar a análise |
 
@@ -55,10 +57,8 @@ examinados pelo modelo.
 O campo `source` identifica o arquivo recebido. O relatório não inclui o YAML
 completo nem todos os comandos dos steps.
 
-O contrato 0.4 acrescenta `context_evaluations` em cada snapshot e
-`step_changes` na comparação. Os campos `before`, `after` e `changes` mantêm
-seus significados. Diagnósticos condicionais dependem dos contextos
-explicitamente fornecidos.
+O schema 0.5 acrescenta `impact_links` à comparação. Diagnósticos
+condicionais dependem dos contextos explicitamente fornecidos.
 
 ## Contextos de evento
 
@@ -157,6 +157,47 @@ do ID.
 
 O contrato não contém classificação histórica como novo, persistente ou
 resolvido. O hash do achado também não garante correspondência entre versões.
+
+## Impactos explicados
+
+A seção **Impactos explicados** do Markdown descreve os vínculos que a
+comparação demonstrou entre uma mudança e um alerta da versão modificada.
+Em JSON, cada item em `impact_links` contém os seguintes campos.
+
+| Campo | Conteúdo |
+|---|---|
+| `type` | Tipo de impacto identificado |
+| `change_index` | Índice em `changes`, contado a partir de 0 |
+| `finding_id` | ID do alerta em `after.findings` |
+| `location` | Localização do alerta na versão modificada |
+| `evidence` | Evidência estruturada do que foi verificado no modelo |
+| `step_change_index` | Índice em `step_changes`, contado a partir de 0, no vínculo com R03 |
+| `context` | Contexto de evento usado no vínculo com R03 |
+
+| Tipo | Verificação |
+|---|---|
+| `artifact_order_lost` (R02) | O upload e o download reconhecidos ainda são identificáveis. Havia precedência na versão anterior. Recolocar uma aresta removida na versão modificada restabelece a ordem entre produtor e consumidor. |
+| `direct_needs_lost` (R06) | A mesma referência literal a output ou resultado permanece no consumidor. O produtor saiu de seu `needs` direto, inclusive quando continua antecedendo o consumidor por outro caminho. |
+| `upload_condition_changed` (R03) | No mesmo contexto elegível, o download continua ativo e o upload passa de ativo para pulado. Restaurar apenas o `if` anterior do upload no modelo da versão modificada volta a ativá-lo antes do download. |
+
+Em `evidence`, todos os tipos identificam `producer_job` e `consumer_job`.
+As demais propriedades variam com a verificação.
+
+- **R02** registra `artifact`, `removed_edge` na ordem
+  `[pré-requisito, dependente]` e os booleanos `precedence_before`,
+  `precedence_after` e `precedence_with_restored_edge`.
+- **R06** registra `reference`, `removed_edge` e `order_preserved`. O
+  último indica se a ordem estrutural foi preservada por outro caminho.
+- **R03** registra `artifact`, as posições `producer_step_before`,
+  `producer_step_after`, `consumer_step_before` e `consumer_step_after`,
+  contadas a partir de 1, e os estados `upload_state_before`,
+  `upload_state_after` e `upload_state_with_restored_if`.
+
+A lista fica vazia quando as verificações deixam o vínculo sem demonstração.
+`after.findings` continua sendo o campo para consultar todos os achados da
+versão modificada. Os resultados descrevem propriedades do modelo estático
+e consideram somente relações reconhecidas. [Limitações LIM-030 e
+LIM-031](LIMITACOES-DO-PROTOTIPO.md).
 
 ## Cobertura de cada snapshot
 
