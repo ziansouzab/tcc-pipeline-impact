@@ -16,14 +16,17 @@ acrescenta as mudanças entre configurações.
 | `R04_CONDITION_CHANGE` | Alteração da condição de um job | `changes` |
 | `R04_FAILURE_POLICY_CHANGE` | Alteração de `continue-on-error` | `changes` |
 | `R05_PARALLEL_REVIEW` | Dependência candidata à revisão para possível paralelismo | `findings`, tipo `opportunity` |
+| `R06_NEEDS_DIRECT_DEPENDENCY` | Referência a output ou resultado de job fora das dependências diretas do consumidor | `findings`, tipo `warning` |
 
 Também são registradas mudanças na lista de steps (`STEP_CHANGE`), nos outputs
 (`OUTPUT_CHANGE`), nos eventos (`TRIGGER_CHANGE`) e em propriedades sem
 interpretação comportamental (`UNMODELED_JOB_CHANGE` e
 `UNMODELED_WORKFLOW_CHANGE`).
 
-Não existe um achado emitido como `R06` nesta versão. Pares de jobs sem ordem
-imposta pelo grafo aparecem em `structurally_unordered_pairs`.
+Pares de jobs sem ordem imposta pelo grafo aparecem em
+`structurally_unordered_pairs`. Os casos 11 e 12 mantêm `R06` em
+`plan_rule` como rótulo do plano inicial. O identificador de diagnóstico
+da versão atual é `R06_NEEDS_DIRECT_DEPENDENCY`.
 
 ## Estrutura principal
 
@@ -44,9 +47,10 @@ Cada snapshot contém `source`, `jobs`, `edges`, `data_relations`,
 `findings`, `coverage` e `limitations`.
 
 As arestas usam a direção do pré-requisito para o dependente. `data_relations`
-registra relações reconhecidas entre jobs, inclusive nos casos sem precedência
-garantida no grafo. `contexts_checked` informa os cenários admitidos pelos
-gatilhos e examinados pelo modelo.
+registra pares de jobs relacionados por artefatos e por referências reconhecidas
+a outputs ou resultados, inclusive nos casos sem precedência garantida no
+grafo. `contexts_checked` informa os cenários admitidos pelos gatilhos e
+examinados pelo modelo.
 
 O campo `source` identifica o arquivo recebido. O relatório não inclui o YAML
 completo nem todos os comandos dos steps.
@@ -142,11 +146,14 @@ Um achado contém `id`, `rule`, `kind`, `jobs`, `artifact`, `context`, `evidence
 - `evidence` descreve os elementos que sustentam a conclusão.
 - `suggestion` informa a revisão proposta, quando aplicável.
 - `location` aponta o job consumidor e a posição do step em R02 e R03. Em R05,
-  aponta o job dependente e o campo `needs`.
+  aponta o job dependente e o campo `needs`. Em R06, indica o job consumidor,
+  o campo em que a referência foi encontrada e a posição do step quando
+  aplicável.
 
 A posição do step conta a partir de 1 na lista de steps do job. Um contexto
-`null` em R02 identifica um diagnóstico estrutural. O analisador registra a
-localização ao criar o achado e mantém esse campo fora do cálculo do ID.
+`null` em R02 ou R06 identifica um diagnóstico estrutural. O analisador
+registra a localização ao criar o achado e mantém esse campo fora do cálculo
+do ID.
 
 O contrato não contém classificação histórica como novo, persistente ou
 resolvido. O hash do achado também não garante correspondência entre versões.
@@ -155,11 +162,12 @@ resolvido. O hash do achado também não garante correspondência entre versões
 
 O campo `coverage` contém registros para o reconhecimento de artefatos
 (`artifact_recognition`), a ordem dos artefatos (`R02_ARTIFACT_ORDER`), suas
-condições (`R03_ARTIFACT_CONDITION`) e a revisão de paralelismo
-(`R05_PARALLEL_REVIEW`). Cada registro contém `analysis`, `scope`, `status`,
-`reasons` e `details`. `reasons` é uma lista de textos. Cada item de `details`
-contém `result` e `message` e pode incluir `location`, `context`, `edge`,
-`protected_relation`, `action` ou `artifact`.
+condições (`R03_ARTIFACT_CONDITION`), a revisão de paralelismo
+(`R05_PARALLEL_REVIEW`) e as dependências diretas de referências ao contexto
+`needs` (`R06_NEEDS_DIRECT_DEPENDENCY`). Cada registro contém `analysis`,
+`scope`, `status`, `reasons` e `details`. `reasons` é uma lista de textos.
+Cada item de `details` contém `result` e `message` e pode incluir `location`,
+`context`, `edge`, `protected_relation`, `action` ou `artifact`.
 
 | `status` | Rótulo no relatório | Interpretação |
 |---|---|---|
@@ -171,9 +179,11 @@ contém `result` e `message` e pode incluir `location`, `context`, `edge`,
 Os detalhes incluem produtores e consumidores reconhecidos, seletores não
 suportados, jobs não resolvidos, contextos examinados e condições indeterminadas.
 Para paralelismo, registram motivos de suspensão, dependências examinadas,
-ordem preservada por outro caminho e relações de dados protegidas. Actions fora
-do reconhecimento de artefatos aparecem como fronteira da análise, de acordo
-com LIM-002 e LIM-034. [Catálogo de limitações](LIMITACOES-DO-PROTOTIPO.md).
+ordem preservada por outro caminho e relações de dados protegidas. O detalhe
+`direct_needs_protected` identifica a aresta e a relação cuja referência
+exige a dependência direta. Actions fora do reconhecimento de artefatos aparecem
+como fronteira da análise, de acordo com LIM-002 e LIM-034.
+[Catálogo de limitações](LIMITACOES-DO-PROTOTIPO.md).
 
 As situações se referem ao escopo registrado para cada análise. Para interpretar
 uma saída sem alertas, examine `coverage`, `limitations` e `assumptions`.
@@ -196,16 +206,46 @@ A auditoria de `after.yml` produz um grafo e um alerta R02 com `location` igual 
 disponibilização do artefato. Na comparação, `changes` registra a alteração da
 dependência direta e dos ancestrais de `verify`.
 
+## Exemplo de acesso ao contexto needs
+
+Considere a ordem `build → bridge → verify`. O job `verify` usa
+`${{ needs.build.outputs.version }}` em um step e declara
+`needs: [build, bridge]`. Se a declaração mudar para `needs: bridge`,
+`build` continua sendo um ancestral de `verify`. O acesso ao output depende
+da declaração direta e a versão modificada recebe R06. A mesma verificação
+se aplica a `needs.build.result`. Um upload em `build` e um download em
+`verify` podem manter a precedência estrutural por meio de `bridge`.
+[Contexto needs no GitHub Actions](https://docs.github.com/en/actions/reference/workflows-and-actions/contexts#needs-context).
+
+A R06 verifica o workflow na auditoria ou cada versão na comparação,
+independentemente do contexto de evento. A regra procura referências literais
+a outputs e resultados em expressões `${{ ... }}` nos valores de jobs e steps.
+O campo `if` de jobs e steps também é examinado quando a expressão aparece
+sem delimitadores. Texto comum e literais de texto dentro das expressões
+ficam fora da busca.
+São aceitos acessos por ponto e por colchetes com chave textual literal,
+como `needs['build'].outputs['version']`. A comparação dos IDs de job
+ignora diferenças de maiúsculas e minúsculas.
+
+`evidence` registra `producer_job`, `reference`, `reason` e os campos
+de localização do consumidor. A referência
+é apresentada com pontos, inclusive quando a expressão usa colchetes.
+A cobertura registra `executed` ao verificar acessos reconhecidos e
+`not_applicable` quando nenhum acesso é reconhecido. A regra verifica a
+declaração da dependência direta. A obtenção dos valores e a disponibilidade
+do contexto em cada campo ficam fora do modelo.
+[Catálogo, LIM-009 e LIM-041](LIMITACOES-DO-PROTOTIPO.md).
+
 ## Premissas que afetam a leitura
 
 R02 considera produtores locais reconhecidos e precedência estrutural. R03
 considera os cenários suportados e o estado calculado dos steps. Um upload ativo
 no modelo não comprova existência dos arquivos nem sucesso efetivo da action.
 
-R05 verifica uma aresta por vez e preserva relações de dados reconhecidas que
-tinham precedência no modelo original. Ela não examina todos os recursos
-compartilhados ou efeitos externos, não estima economia e não autoriza uma
-remoção automática de dependência.
+R05 verifica uma aresta por vez. Preserva a dependência direta exigida por
+referências ao contexto `needs` e a precedência que já existia nas relações
+de artefatos reconhecidas. Recursos compartilhados, efeitos externos,
+estimativa de economia e remoção automática ficam fora dessa revisão.
 
 `affected_jobs` reúne descendentes potencialmente afetados. Uma lista vazia
 pode indicar que o job modificado é terminal; não significa ausência de impacto

@@ -129,6 +129,7 @@ real localmente, informe o evento e as referências pertinentes ao workflow.
 | Comparação de steps | Detalha mudanças em steps com correspondência reconhecida, adições, remoções e alterações na ordem relativa |
 | Alcance no grafo | Identifica relações transitivas e descendentes potencialmente afetados |
 | Artefatos reconhecidos | Verifica precedência entre uploads e downloads de mesmo nome literal |
+| Contexto `needs` | Verifica se referências literais a outputs e resultados têm a dependência direta exigida |
 | Condições suportadas | Procura consumo ativo com uploads anteriores pulados nos contextos de evento fornecidos |
 | Revisão do paralelismo | Examina a remoção hipotética de uma dependência, considerando relações de dados reconhecidas |
 

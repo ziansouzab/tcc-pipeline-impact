@@ -1,6 +1,6 @@
 # Catálogo de limitações do protótipo
 
-Atualizado em **12/11/2026**. Contrato de saída **schema 0.4**.
+Atualizado em **14/11/2026**. Contrato de saída **schema 0.4**.
 
 Este é o registro vivo das restrições identificadas durante a leitura do código.
 Ele reúne limites técnicos, escolhas de escopo e integrações previstas. A
@@ -24,6 +24,7 @@ Comece por:
 - **LIM-020 a LIM-024:** estruturas não modeladas.
 - **LIM-030:** acompanhamento de achados deliberadamente adiado.
 - **LIM-039:** o que os testes atuais ainda não demonstram.
+- **LIM-041:** acesso a outputs e resultados exige dependência direta.
 
 Use `coverage` para consultar o alcance de cada análise, `limitations` para
 ler restrições detectadas e `assumptions` para conhecer as premissas gerais.
@@ -99,6 +100,10 @@ pattern faz o seletor ser considerado não suportado.
 Não expandimos padrões para descobrir todos os artefatos selecionados nem
 modelamos todas as opções de agregação da action.
 
+Downloads por `artifact-ids` também ficam fora do modelo. Um download somente
+por ID é registrado como seletor fora do escopo porque falta o nome literal.
+[Opções da action de download](https://github.com/actions/download-artifact#inputs).
+
 **Impacto:** uma relação que usa um padrão de nomes não é representada como várias
 relações individuais. Não equivale a erro no padrão configurado.
 
@@ -157,38 +162,41 @@ se a versão ou revisão existe, nem suas diferenças de comportamento.
 
 Também não validamos todos os parâmetros aceitos por cada versão.
 
+Por exemplo, em referências que aceitam `archive: false`, a action de upload
+usa o nome do arquivo. O analisador ainda forma a relação pelo `name` do YAML
+ou pelo padrão `artifact`, o que pode produzir uma relação incorreta sem
+sinalizar essa opção em `coverage`.
+[Opções da action de upload](https://github.com/actions/upload-artifact#inputs).
+
 **Impacto:** reconhecer upload-artifact@v4 e outra referência pelo mesmo nome não
 comprova que o modelo seja fiel a todos os comportamentos dessas referências.
 
 **Referência:** analyzer.py, artifact_steps(), uses.split("@").
 
-### LIM-009 — Outputs reconhecidos por busca textual
+### LIM-009 — Referências ao contexto needs reconhecidas parcialmente
 
 **Tipo:** reconhecimento parcial de relações de dados.
 
-OUTPUT_REF procura o formato needs.job.outputs.nome no texto JSON do job.
-Captura o identificador do produtor e o nome do output, não seu valor real.
+O analisador reconhece referências literais como `needs.build.outputs.version`
+e `needs.build.result` dentro de expressões nos valores do workflow. Em
+`if` de jobs e steps, a leitura também considera a forma sem delimitadores.
+Colchetes com chaves textuais literais podem ser combinados com pontos,
+por exemplo em `needs['build'].outputs['version']`. A R06 verifica a
+presença da dependência direta para esses acessos reconhecidos.
+Consulte LIM-041.
 
-Não reconhece todas as formas de acesso, como colchetes ou referências dinâmicas,
-e não confirma se o output existe ou foi produzido. Um texto que tenha esse
-formato também pode ser reconhecido sem representar um uso efetivo.
+O reconhecimento deixa de fora referências dinâmicas e filtros por coringa.
+Os pares em `data_relations` identificam somente produtor e consumidor.
+O modelo deixa em aberto a existência de um output, seu valor e o resultado
+real do produtor. A disponibilidade do contexto em cada campo da sintaxe
+do GitHub Actions também fica fora da verificação.
 
-A normalização com by_lower.get() mantém o identificador capturado quando ele
-não é encontrado no mapa de jobs. Esse trecho não rejeita a referência a um job
-inexistente nem registra uma mensagem específica. Na verificação de preservação
-de dados para paralelismo, pares cujo produtor ou consumidor não existe no modelo
-são ignorados.
+**Impacto:** expressões fora do subconjunto podem deixar relações
+invisíveis. Uma dependência direta confirmada pela R06 indica acesso
+estrutural no modelo, com a execução e os valores ainda indeterminados.
 
-O nome capturado em output_name não é guardado em data_pairs: essa coleção
-representa pares de jobs, sem discriminar cada output individual.
-
-**Impacto:** podemos deixar relações invisíveis ou considerar uma relação apenas
-textual. Isso influencia a filtragem das sugestões de remover dependências.
-
-**Referência:** analyzer.py, OUTPUT_REF e snapshot(), OUTPUT_REF.findall(),
-by_lower.get(), data_pairs e verificações de existência dos jobs na R05.
-Detalhamento acrescentado em 28/10/2026. Este Markdown é a versão de referência;
-cópias de consulta anteriores podem não incluir as atualizações.
+**Referência:** `job_needs_references()` em `needs_references.py` e
+`check_direct_needs()` em `analyzer.py`.
 
 ### LIM-010 — Ordem estrutural não equivale a consumo ativo
 
@@ -452,6 +460,12 @@ recursivas. Uma data entre aspas permanece um texto suportado. Essa fronteira
 evita que valores não representáveis provoquem um traceback durante a análise;
 ela não constitui uma validação completa do formato de workflows.
 
+Uma configuração inválida para o GitHub pode passar pela leitura. Por exemplo,
+um job comum com `steps: []` e sem `runs-on` passa por essas validações.
+Pela leitura de `compare()`, uma chave numérica entre campos extras de um job
+pode chegar à ordenação junto de uma chave textual como `runs-on`. A ordenação
+pode levantar `TypeError` fora do tratamento de erros da CLI.
+
 **Impacto:** ser aceito pelo nosso parser não certifica validade completa no
 GitHub. Rejeitar algo fora do suporte também não prova que o GitHub o rejeitaria.
 
@@ -479,6 +493,10 @@ structurally_unordered_pairs.
 
 Podemos preservar um campo e detectar sua alteração sem interpretar seu efeito.
 UNMODELED_JOB_CHANGE e UNMODELED_WORKFLOW_CHANGE tornam isso explícito.
+
+A comparação deixa de fora os rótulos `name` e `run-name` na raiz e
+`name` no job. Uma alteração restrita a esses rótulos pode deixar
+`changes` vazio.
 
 **Impacto:** detectar, por exemplo, que um campo de configuração mudou não
 significa prever todas as consequências sobre a execução.
@@ -529,6 +547,12 @@ identifica o job dependente e seu campo `needs`.
 correspondência é delimitada ao job e ao par de arquivos em análise. A
 rastreabilidade de steps ou de achados ao longo do histórico está fora desse
 pareamento.
+
+`context_comparisons` é gerado quando muda o `if` de um step pareado. Se apenas
+o `if` do job ou o gatilho mudar, os estados podem diferir entre
+`before.context_evaluations` e `after.context_evaluations` sem um registro
+individual em `step_changes`. A ordem relativa também deixa de fora
+dependências gerais entre steps, como uma referência a `steps.setup.outputs`.
 
 **Referência** `compare_job_steps()` em `step_comparison.py` e `compare()` em
 `analyzer.py`.
@@ -603,6 +627,8 @@ fora do reconhecimento aparecem como fronteira em `coverage` e, sozinhas,
 permitem que a verificação estrutural prossiga.
 
 Limitações de condições também não entram diretamente em can_review_parallelism.
+Uma referência não textual em `uses` torna o reconhecimento de artefatos
+parcial, mas essa observação, isoladamente, também permite que a R05 prossiga.
 
 **Impacto:** as sugestões dependem das relações reconhecidas e das guardas
 implementadas. Consulte `coverage` para verificar escopo, situação e motivos.
@@ -619,6 +645,12 @@ A CLI recebe um arquivo local em `audit` e dois na comparação. O piloto usa o
 Git para extrair o YAML do SHA do PR e entrega uma cópia local à CLI. A seleção
 automática de duas versões para comparação e um serviço HTTP são extensões
 futuras.
+
+No PR, o YAML analisado vem do SHA do head e o contexto pode trazer uma
+referência de merge. Se a base tiver alterações no mesmo arquivo, a cópia
+analisada pode diferir do YAML resultante do merge que o GitHub considera
+no evento padrão de `pull_request`.
+[Branch de merge do pull request](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#how-the-merge-branch-affects-your-workflow).
 
 **Impacto:** o usuário ou a integração deve fornecer o caminho da configuração
 auditada e, para comparar, também o caminho da versão anterior.
@@ -657,6 +689,11 @@ para a integração em pipelines que exijam essa ordem.
 **Impacto:** mudanças fora dos caminhos monitorados são dispensadas. O resumo
 distingue essa situação de falha ao obter o diff ou ler um arquivo. A leitura do
 workflow que contém o analisador é estática.
+
+O resumo do Actions associa cada relatório ao caminho original e ao SHA. O
+campo `source` do relatório aponta para a cópia local preparada pelo script.
+Em uma falha de análise, o resumo registra o código de saída da CLI, com
+detalhes como linha e causa do erro disponíveis na execução local.
 
 **Referência:** scripts/audit_pull_request.py; .github/workflows/pipeline-audit-lab.yml.
 
@@ -706,6 +743,33 @@ Preservar a clareza do código continua sendo uma preferência do projeto.
 
 **Referência:** model.py, Workflow.ancestors()/descendants(); chamadas em analyzer.py.
 
+### LIM-041 — Acesso a outputs e resultados exige dependência direta
+
+**Estado** Corrigido para as referências literais reconhecidas.
+
+O GitHub Actions disponibiliza em `needs` os outputs e resultados das
+dependências diretas de um job. A R06 verifica a declaração dessa dependência
+na auditoria e em cada versão da comparação.
+
+Considere `build → bridge → verify` e um `verify` que lê
+`needs.build.outputs.version`. Mudar `needs: [build, bridge]` para
+`needs: bridge` preserva a ordem de `build` antes de `verify` e retira
+`build` do contexto `needs` de `verify`. A configuração modificada recebe
+`R06_NEEDS_DIRECT_DEPENDENCY` na localização da referência.
+
+Uma condição como `always() && needs.build.result == 'success'` também
+exige `needs: build`. Quando a dependência direta existe, a revisão de
+paralelismo protege a aresta e registra `direct_needs_protected` em sua
+cobertura. Nas transferências de artefatos, a ordem preservada por um caminho
+indireto ainda satisfaz a verificação estrutural.
+
+**Limite restante** A regra cobre as referências reconhecidas conforme a
+LIM-009. Valores de outputs, resultados reais e referências dinâmicas ficam
+fora do modelo.
+
+**Referência** `snapshot()` e `compare()` em `analyzer.py`.
+[Contexto needs no GitHub Actions](https://docs.github.com/en/actions/reference/workflows-and-actions/contexts#needs-context).
+
 ## 6. Decisões e correções que não devem voltar como pendências
 
 - **Consulta genérica já implementada.** O interpretador consulta os valores do
@@ -728,7 +792,7 @@ Preservar a clareza do código continua sendo uma preferência do projeto.
 1. Ao identificar uma nova limitação durante a leitura, procurar primeiro se ela
    já está representada neste catálogo.
 2. Atualizar o item existente ou acrescentar o próximo identificador, sem
-   renumerar os anteriores. O próximo disponível é LIM-041.
+   renumerar os anteriores. O próximo disponível é LIM-042.
 3. Registrar o que não é feito, um exemplo ou consequência, a função relacionada
    e se o programa sinaliza a restrição automaticamente.
 4. Distinguir falta de conhecimento, recurso não implementado, aproximação,

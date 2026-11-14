@@ -38,6 +38,7 @@ informados, diagnósticos, cobertura e limitações da configuração.
 | [model.py](../src/pipeline_impact/model.py) | Ler e normalizar YAML, verificar a estrutura suportada e oferecer consultas ao grafo |
 | [conditions.py](../src/pipeline_impact/conditions.py) | Interpretar o subconjunto de condições e calcular estados no modelo |
 | [event_context.py](../src/pipeline_impact/event_context.py) | Validar os contextos de entrada e verificar sua elegibilidade perante os gatilhos |
+| [needs_references.py](../src/pipeline_impact/needs_references.py) | Localizar referências literais a outputs e resultados em expressões de jobs e steps |
 | [analyzer.py](../src/pipeline_impact/analyzer.py) | Auditar, comparar, aplicar verificações e registrar a cobertura |
 | [step_comparison.py](../src/pipeline_impact/step_comparison.py) | Estabelecer a correspondência entre steps e descrever mudanças por job |
 | [reporting.py](../src/pipeline_impact/reporting.py) | Apresentar os resultados e os grafos em Markdown |
@@ -79,11 +80,12 @@ igualdade do nome literal individual do artefato.
 ao mesmo job. Entre jobs, consulta os ancestrais do consumidor. Assim, uma
 precedência transitiva pode ser suficiente mesmo sem uma aresta direta.
 
-Referências textuais no formato `needs.job.outputs.nome` também produzem pares
-de jobs relacionados por dados. Essa busca não valida a existência do output
-nem cobre todas as formas de acesso. As relações reconhecidas restringem as
-sugestões de revisão de dependências; elas não descrevem todos os efeitos de
-scripts, actions personalizadas ou serviços externos.
+As expressões `needs.job.outputs.nome` e `needs.job.result` identificam um
+produtor que deve constar nas dependências diretas do consumidor. A R06 verifica
+essa declaração e localiza a referência. A R05 preserva as arestas usadas por
+essas referências e a precedência de artefatos reconhecidos. A busca cobre
+acessos literais e deixa de fora os valores produzidos e os efeitos de scripts,
+actions personalizadas e serviços externos.
 
 ## Condições e indeterminação
 
