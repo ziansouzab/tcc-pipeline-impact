@@ -19,6 +19,8 @@ class EventContextTests(unittest.TestCase):
                 "github.ref": "refs/pull/25/merge",
                 "github.base_ref": "master",
                 "github.head_ref": "feature",
+                "github.repository": "owner/project",
+                "github.event.pull_request.head.repo.full_name": "contributor/project",
             },
             {
                 "github.event_name": "push",
@@ -43,6 +45,7 @@ class EventContextTests(unittest.TestCase):
             (b'[{"github.event_name": "push", "github.ref": 1}]', "github.ref"),
             (br'[{"github.event_name": "push", "github.ref": "\ud800"}]', "Unicode"),
             (b'[{"github.event_name": "push", "github.token": "private"}]', "não suportado"),
+            (b'[{"github.event_name":"pull_request","github.event.pull_request.body":"private"}]', "não suportado"),
             (b'[{"github.event_name": "push", "github.event_name": "pull_request"}]', "repetida"),
             (
                 b'[{"github.event_name":"push","github.ref":"x"},{"github.ref":"x","github.event_name":"push"}]',

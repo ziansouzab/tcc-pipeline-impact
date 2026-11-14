@@ -8,10 +8,12 @@ from .model import InputError
 
 CONTEXT_KEYS = (
     "github.event_name",
+    "github.repository",
     "github.ref",
     "github.base_ref",
     "github.head_ref",
     "github.event.before",
+    "github.event.pull_request.head.repo.full_name",
 )
 PATTERN_CHARACTERS = set("*+?![]{}\\")
 

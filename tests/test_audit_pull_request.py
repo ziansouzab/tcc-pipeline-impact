@@ -24,6 +24,8 @@ class PullRequestAuditTests(unittest.TestCase):
         self.script = ROOT / "scripts/audit_pull_request.py"
         self.environment = os.environ.copy()
         self.environment.pop("PIPELINE_IMPACT_GITHUB_EVENT", None)
+        self.environment.pop("GITHUB_EVENT_PATH", None)
+        self.environment.pop("GITHUB_REPOSITORY", None)
         self.environment["GITHUB_OUTPUT"] = str(self.github_output)
         self.environment["GITHUB_STEP_SUMMARY"] = str(self.summary_file)
         self.git("init", "--quiet", "--initial-branch=base")
@@ -210,6 +212,16 @@ class PullRequestAuditTests(unittest.TestCase):
         self.environment["GITHUB_REF"] = "refs/pull/42/merge"
         self.environment["GITHUB_BASE_REF"] = "release-2026"
         self.environment["GITHUB_HEAD_REF"] = "feature/atualiza-ci"
+        self.environment["GITHUB_REPOSITORY"] = "lab/pipeline-impact"
+        event_path = self.root / "event.json"
+        event = {
+            "pull_request": {
+                "head": {"repo": {"full_name": "lab/pipeline-impact"}},
+                "body": "PRIVATE_EXAMPLE",
+            }
+        }
+        event_path.write_text(json.dumps(event), encoding="utf-8")
+        self.environment["GITHUB_EVENT_PATH"] = str(event_path)
         result = self.execute("audit")
         self.assertEqual(0, result.returncode, self.read_summary())
 
@@ -218,6 +230,8 @@ class PullRequestAuditTests(unittest.TestCase):
             "github.ref": "refs/pull/42/merge",
             "github.base_ref": "release-2026",
             "github.head_ref": "feature/atualiza-ci",
+            "github.repository": "lab/pipeline-impact",
+            "github.event.pull_request.head.repo.full_name": "lab/pipeline-impact",
         }
         expected_contexts = [expected_context]
         context_text = (self.output / "contexts.json").read_text(encoding="utf-8")
@@ -226,6 +240,7 @@ class PullRequestAuditTests(unittest.TestCase):
         self.assertFalse((reports / "contexts.json").exists())
         self.assertFalse((reports / "001/contexts.json").exists())
         report_text = (reports / "001/report.json").read_text(encoding="utf-8")
+        self.assertNotIn("PRIVATE_EXAMPLE", report_text)
         report = json.loads(report_text)
         self.assertEqual("compare", report["mode"])
         self.assertEqual(expected_contexts, report["before"]["contexts_checked"])

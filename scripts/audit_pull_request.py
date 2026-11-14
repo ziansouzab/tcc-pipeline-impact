@@ -144,6 +144,27 @@ def prepare(directory, base, head):
     return 0
 
 
+def pull_request_head_repository():
+    event_path = os.environ.get("GITHUB_EVENT_PATH")
+    if not event_path:
+        return None
+
+    try:
+        event = json.loads(Path(event_path).read_text(encoding="utf-8"))
+    except (OSError, ValueError, RecursionError):
+        return None
+
+    current = event
+    for field in ("pull_request", "head", "repo", "full_name"):
+        if not isinstance(current, dict):
+            return None
+        current = current.get(field)
+
+    if isinstance(current, str) and re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", current):
+        return current
+    return None
+
+
 def read_github_event():
     event_name = os.environ.get("GITHUB_EVENT_NAME", "")
     ref = os.environ.get("GITHUB_REF", "")
@@ -165,6 +186,15 @@ def read_github_event():
         context["github.base_ref"] = base_ref
     if head_ref.strip():
         context["github.head_ref"] = head_ref
+
+    repository = os.environ.get("GITHUB_REPOSITORY", "")
+    if repository.strip():
+        context["github.repository"] = repository
+    if event_name in ("pull_request", "pull_request_target"):
+        head_repository = pull_request_head_repository()
+        if head_repository is not None:
+            context["github.event.pull_request.head.repo.full_name"] = head_repository
+
     return context
 
 

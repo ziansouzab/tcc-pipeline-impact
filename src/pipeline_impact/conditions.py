@@ -2,10 +2,26 @@ from __future__ import annotations
 
 import re
 
+from .event_context import CONTEXT_KEYS
+
 
 STRING_TOKEN_PATTERN = r"('(?:[^']|'')*')"
-OPERATOR_TOKEN_PATTERN = r"(\&\&|\|\||==|!=|!|\(|\))"
-IDENTIFIER_TOKEN_PATTERN = r"([A-Za-z_][A-Za-z0-9_.]*)"
+OPERATOR_TOKEN_PATTERN = r"(\&\&|\|\||==|!=|!|\(|\)|,)"
+IDENTIFIER_TOKEN_PATTERN = r"([A-Za-z_][A-Za-z0-9_-]*(?:\.[A-Za-z_][A-Za-z0-9_-]*)*)"
+IDENTIFIER = re.compile(IDENTIFIER_TOKEN_PATTERN)
+STRING_FUNCTIONS = ("contains", "startswith", "endswith")
+RUNTIME_NAMESPACES = (
+    "steps",
+    "needs",
+    "job",
+    "runner",
+    "strategy",
+    "matrix",
+    "env",
+    "vars",
+    "secrets",
+    "inputs",
+)
 
 
 TOKEN_PATTERN = (
@@ -61,6 +77,8 @@ def evaluate(
     expression: str | None,
     context: dict[str, str | bool | None],
     success: bool | None = True,
+    *,
+    unavailable_references: dict[str, list[str]] | None = None,
 ) -> bool | None:
     if expression is None:
         return success
@@ -114,6 +132,57 @@ def evaluate(
 
         return None
 
+    def boolean_value(value):
+        if value is not None and not isinstance(value, bool):
+            raise UnsupportedCondition(expression)
+        return value
+
+    def string_function(function_name):
+        take("(")
+        text = disjunction()
+        take(",")
+        search = disjunction()
+        take(")")
+
+        if text is not None and not isinstance(text, str):
+            raise UnsupportedCondition(expression)
+        if search is not None and not isinstance(search, str):
+            raise UnsupportedCondition(expression)
+        if text is None or search is None:
+            return None
+
+        text = text.casefold()
+        search = search.casefold()
+        if function_name == "contains":
+            return search in text
+        if function_name == "startswith":
+            return text.startswith(search)
+        return text.endswith(search)
+
+    def unknown_reference(reference):
+        namespace, separator, _ = reference.partition(".")
+        if not separator or unavailable_references is None:
+            raise UnsupportedCondition(expression)
+
+        if reference in CONTEXT_KEYS:
+            result = "missing_event_data"
+            display_reference = reference
+        elif namespace in RUNTIME_NAMESPACES:
+            result = "runtime_value"
+            display_reference = namespace
+            if namespace in ("steps", "needs"):
+                display_reference = reference
+        else:
+            result = "unsupported_context"
+            display_reference = None
+            if namespace == "github":
+                display_reference = namespace
+
+        references = unavailable_references.setdefault(result, [])
+        if display_reference and display_reference not in references:
+            references.append(display_reference)
+        return None
+
     def atom():
         nonlocal status_function_used
 
@@ -125,11 +194,7 @@ def evaluate(
             return value
 
         if token == "!":
-            value = atom()
-
-            if value is not None:
-                if not isinstance(value, bool):
-                    raise UnsupportedCondition(expression)
+            value = boolean_value(atom())
 
             if value is None:
                 return None
@@ -141,39 +206,48 @@ def evaluate(
             text_with_unescaped_quotes = text_without_quotes.replace("''", "'")
             return text_with_unescaped_quotes
 
-        if token == "true":
+        token_name = token.casefold()
+        if token_name == "true":
             return True
 
-        if token == "false":
+        if token_name == "false":
             return False
 
-        if token in ("success", "failure", "cancelled", "always"):
+        if token_name in ("success", "failure", "cancelled", "always"):
             take("(")
             take(")")
             status_function_used = True
 
-            if token == "success":
+            if token_name == "success":
                 return success
 
 
-            if token == "failure":
+            if token_name == "failure":
                 return False
 
-            if token == "cancelled":
+            if token_name == "cancelled":
                 return False
 
             return True
+
+        if token_name in STRING_FUNCTIONS and peek() == "(":
+            return string_function(token_name)
 
         if token in context:
             context_value = context[token]
 
             if context_value is None:
+                if unavailable_references is not None:
+                    return unknown_reference(token)
                 return None
 
             if isinstance(context_value, (str, bool)):
                 return context_value
 
             raise UnsupportedCondition(expression)
+
+        if IDENTIFIER.fullmatch(token) and peek() != "(":
+            return unknown_reference(token)
 
         raise UnsupportedCondition(expression)
 
@@ -186,12 +260,13 @@ def evaluate(
             right_value = atom()
 
 
+            if left_value is None or right_value is None:
+                if unavailable_references is not None:
+                    return None
+                raise UnsupportedCondition(expression)
+
             if type(left_value) != type(right_value):
                 raise UnsupportedCondition(expression)
-
-            if left_value is None:
-                raise UnsupportedCondition(expression)
-
 
             if isinstance(left_value, str):
                 left_value = left_value.casefold()
@@ -202,10 +277,6 @@ def evaluate(
             else:
                 left_value = left_value != right_value
 
-        if left_value is not None:
-            if not isinstance(left_value, bool):
-                raise UnsupportedCondition(expression)
-
         return left_value
 
     def conjunction():
@@ -213,8 +284,8 @@ def evaluate(
 
         while peek() == "&&":
             take("&&")
-            right_value = comparison()
-            value = tri_and(value, right_value)
+            right_value = boolean_value(comparison())
+            value = tri_and(boolean_value(value), right_value)
 
         return value
 
@@ -223,13 +294,13 @@ def evaluate(
 
         while peek() == "||":
             take("||")
-            right_value = conjunction()
-            value = tri_or(value, right_value)
+            right_value = boolean_value(conjunction())
+            value = tri_or(boolean_value(value), right_value)
 
         return value
 
 
-    value = disjunction()
+    value = boolean_value(disjunction())
 
     if cursor != len(tokens):
         raise UnsupportedCondition(expression)
@@ -241,8 +312,61 @@ def evaluate(
     return tri_and(success, value)
 
 
-def states(workflow, context: dict[str, str | bool | None]) -> tuple[dict, list[str]]:
-    job_states = {}
+def condition_diagnostic(result, location, diagnostics, limitations, references=None):
+    if result == "missing_event_data":
+        message = "O contexto informado não contém o dado de evento usado na condição."
+    elif result == "runtime_value":
+        message = "A condição depende de um valor de execução indisponível na análise."
+    elif result == "unsupported_context":
+        message = "A condição usa uma propriedade fora do contexto analisado."
+    else:
+        message = "A expressão está fora do subconjunto interpretado."
+
+    if diagnostics is not None:
+        detail = {"result": result, "message": message, "location": location}
+        if references:
+            detail["references"] = references
+        diagnostics.append(detail)
+
+    prefix = f"Job {location['job']}"
+    if "step" in location:
+        prefix += f", step {location['step']}"
+    explanation = f"{prefix}: {message}"
+    if references:
+        explanation += " Referências: " + ", ".join(references) + "."
+    limitations.append(explanation)
+
+
+def state_from_condition(expression, context, success, location, diagnostics, limitations):
+    unavailable_references = {}
+    try:
+        result = evaluate(
+            expression,
+            context,
+            success,
+            unavailable_references=unavailable_references,
+        )
+    except (UnsupportedCondition, RecursionError):
+        condition_diagnostic("unsupported_expression", location, diagnostics, limitations)
+        return None
+
+    if unavailable_references:
+        for cause, references in unavailable_references.items():
+            condition_diagnostic(cause, location, diagnostics, limitations, references)
+        return None
+
+    return result
+
+
+def states(
+    workflow,
+    context: dict[str, str | bool | None],
+    *,
+    job_states: dict | None = None,
+    diagnostics: list[dict] | None = None,
+) -> tuple[dict, list[str]]:
+    if job_states is None:
+        job_states = {}
     step_states = {}
     limitations = []
 
@@ -261,11 +385,10 @@ def states(workflow, context: dict[str, str | bool | None]) -> tuple[dict, list[
         else:
             success = True
 
-        try:
-            active = evaluate(data["if"], context, success)
-        except UnsupportedCondition:
-            active = None
-            limitations.append(f"Job {job}: condição não suportada: {data['if']}")
+        job_location = {"job": job, "field": "if"}
+        active = state_from_condition(
+            data["if"], context, success, job_location, diagnostics, limitations
+        )
 
         if workflow.unresolved_job(job):
             active = None
@@ -275,17 +398,14 @@ def states(workflow, context: dict[str, str | bool | None]) -> tuple[dict, list[
         for index, step in enumerate(data["steps"]):
             step_key = (job, index)
 
-            try:
-                condition_result = evaluate(step["if"], context)
-                step_states[step_key] = tri_and(active, condition_result)
-            except UnsupportedCondition:
-                if active is False:
-                    step_states[step_key] = False
-                else:
-                    step_states[step_key] = None
+            if active is False:
+                step_states[step_key] = False
+                continue
 
-                limitations.append(
-                    f"Job {job}, step {index + 1}: condição não suportada: {step['if']}"
-                )
+            step_location = {"job": job, "step": index + 1, "field": "if"}
+            condition_result = state_from_condition(
+                step["if"], context, True, step_location, diagnostics, limitations
+            )
+            step_states[step_key] = tri_and(active, condition_result)
 
     return step_states, limitations
