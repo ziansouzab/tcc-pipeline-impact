@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import html
+import json
 
 
 COVERAGE_NAMES = {
     "artifact_recognition": "Reconhecimento de artefatos",
+    "condition_evaluation": "Avaliação de condições",
     "R02_ARTIFACT_ORDER": "Precedência de artefatos",
     "R03_ARTIFACT_CONDITION": "Condições de artefatos",
     "R05_PARALLEL_REVIEW": "Revisão de paralelismo",
@@ -15,6 +17,25 @@ COVERAGE_STATES = {
     "partial": "Parcial",
     "suspended": "Suspensa",
     "not_applicable": "Não aplicável",
+}
+CONTEXT_STATES = {
+    "active": "ativo",
+    "skipped": "pulado",
+    "eligible": "elegível",
+    "event_excluded": "evento excluído",
+    "excluded": "evento excluído",
+    "indeterminate": "indeterminado",
+}
+CHANGE_TITLES = {
+    "R01_DEPENDENCY_CHANGE": "Dependências diretas",
+    "R01_REACHABILITY_CHANGE": "Ordem transitiva dos jobs",
+    "R04_CONDITION_CHANGE": "Condição de execução",
+    "R04_FAILURE_POLICY_CHANGE": "Política de falha",
+    "STEP_CHANGE": "Configuração dos steps",
+    "OUTPUT_CHANGE": "Declaração de outputs",
+    "UNMODELED_JOB_CHANGE": "Configuração do job",
+    "UNMODELED_WORKFLOW_CHANGE": "Configuração do workflow",
+    "TRIGGER_CHANGE": "Gatilhos do workflow",
 }
 
 
@@ -83,92 +104,25 @@ def names_as_code(names: list[str]) -> str:
     return ", ".join(labels)
 
 
-def comparison_lines(report: dict) -> list[str]:
-    before_diagram = diagram(report["before"])
-    after_diagram = diagram(report["after"])
-
-    lines = [
-        "# Análise de impacto da pipeline",
-        "",
-        f"Protótipo {report['tool_version']} — resultado estático, sujeito às premissas abaixo.",
-        "",
-        f"Mudanças identificadas: **{len(report['changes'])}**.",
-        "",
-        "## Grafos de dependências",
-        "",
-        "### Antes",
-        "",
-        "```mermaid",
-        before_diagram,
-        "```",
-        "",
-        "### Depois",
-        "",
-        "```mermaid",
-        after_diagram,
-        "```",
-        "",
-        "## Mudanças",
-        "",
-        "| Regra | Job | Evidência | Etapas posteriores afetadas |",
-        "|---|---|---|---|",
-    ]
-
-    for change in report["changes"]:
-        if "before" in change:
-            evidence = f"{change['before']} → {change['after']}"
-        elif "field" in change:
-            evidence = change["field"]
-        elif "change" in change:
-            evidence = change["change"]
-        else:
-            evidence = "eventos"
-
-        affected_jobs = ", ".join(change["affected_jobs"])
-        if not affected_jobs:
-            affected_jobs = "—"
-
-        cell_values = [
-            change.get("job", "workflow"),
-            evidence,
-            affected_jobs,
-        ]
-        rule_code = change["rule"].replace("|", "\\|")
-        safe_values = [inline_code(rule_code)]
-        for cell_value in cell_values:
-            safe_values.append(safe_cell(cell_value))
-
-        table_row = "| " + " | ".join(safe_values) + " |"
-        lines.append(table_row)
-
-    if not report["changes"]:
-        lines.append("| — | — | Nenhuma mudança nas propriedades acompanhadas | — |")
-
-    return lines
-
-
-def audit_lines(report: dict) -> list[str]:
-    analysis = report["analysis"]
-    workflow_diagram = diagram(analysis)
-    source = inline_code(analysis["source"])
+def overview_lines(report: dict, mode: str) -> list[str]:
     warnings = report["summary"].get("warning", 0)
     opportunities = report["summary"].get("opportunity", 0)
+    version = inline_code(report["tool_version"])
+    if mode == "audit":
+        source = inline_code(report["analysis"]["source"])
+        lines = ["# Auditoria da pipeline", "", f"Arquivo {source}."]
+    else:
+        lines = ["# Análise de impacto da pipeline"]
 
-    lines = [
-        "# Auditoria da pipeline",
-        "",
-        f"Protótipo {report['tool_version']} — resultado estático, sujeito às premissas abaixo.",
-        "",
-        f"Arquivo {source}.",
+    lines.extend([
         "",
         f"Alertas: **{warnings}**. Oportunidades de revisão: **{opportunities}**.",
-        "",
-        "## Grafo de dependências",
-        "",
-        "```mermaid",
-        workflow_diagram,
-        "```",
-    ]
+    ])
+    if mode != "audit":
+        changes = len(report["changes"])
+        impacts = len(report.get("impact_links", []))
+        lines.append(f"Mudanças identificadas: **{changes}**. Vínculos com alertas: **{impacts}**.")
+    lines.extend(["", f"Protótipo {version}. Análise estática."])
     return lines
 
 
@@ -190,6 +144,99 @@ def context_text(context: dict) -> str:
     return ", ".join(parts)
 
 
+def change_value_text(value) -> str:
+    if value is None:
+        return "sem valor explícito"
+    if isinstance(value, list):
+        if not value:
+            return "nenhum"
+        return names_as_code(value)
+    if isinstance(value, bool):
+        if value:
+            return inline_code("true")
+        return inline_code("false")
+    return inline_code(value)
+
+
+def context_comparison_lines(comparisons: list[dict]) -> list[str]:
+    lines = []
+    for comparison in comparisons:
+        context = context_text(comparison["context"])
+        before_state = comparison["before"]
+        after_state = comparison["after"]
+        before = CONTEXT_STATES.get(before_state, safe_cell(before_state))
+        after = CONTEXT_STATES.get(after_state, safe_cell(after_state))
+        lines.append(f"- Cenário {context}. **{before} → {after}**.")
+    return lines
+
+
+def explanation_lines(explanations: list[dict]) -> list[str]:
+    lines = []
+    for explanation in explanations:
+        field = inline_code(explanation["field"])
+        message = safe_cell(explanation["message"])
+        status = explanation["status"]
+        if status == "explained":
+            label = "Efeito"
+        elif status == "indeterminate":
+            label = "Efeito indeterminado"
+        else:
+            label = "Alteração detectada"
+
+        line = f"- **{label}** em {field}."
+        if "before" in explanation and "after" in explanation:
+            before = change_value_text(explanation["before"])
+            after = change_value_text(explanation["after"])
+            line += f" {before} → {after}."
+        line += f" {message}"
+        lines.append(line)
+        lines.extend(context_comparison_lines(explanation.get("context_comparisons", [])))
+    return lines
+
+
+def change_lines(changes: list[dict]) -> list[str]:
+    lines = ["", "## Mudanças e efeitos", ""]
+    if not changes:
+        lines.append("Nenhuma mudança nas propriedades acompanhadas.")
+
+    for change in changes:
+        rule = change["rule"]
+        if rule == "R01_JOB_CHANGE":
+            if change["change"] == "added":
+                title = "Job adicionado"
+            else:
+                title = "Job removido"
+        else:
+            title = CHANGE_TITLES.get(rule, "Alteração de configuração")
+
+        scope = "workflow"
+        if "job" in change:
+            scope = f"job {inline_code(change['job'])}"
+        lines.extend([f"### {title} no {scope}", ""])
+
+        explanations = change.get("explanations", [])
+        if explanations:
+            lines.extend(explanation_lines(explanations))
+        elif "before" in change and "after" in change:
+            before = change_value_text(change["before"])
+            after = change_value_text(change["after"])
+            lines.append(f"- {before} → {after}.")
+        elif "field" in change:
+            field = inline_code(change["field"])
+            lines.append(f"- Campo alterado {field}.")
+
+        affected_jobs = change["affected_jobs"]
+        if affected_jobs:
+            jobs = names_as_code(affected_jobs)
+            if "job" in change:
+                lines.append(f"- **Jobs posteriores no grafo** {jobs}.")
+            else:
+                lines.append(f"- **Jobs no escopo da configuração** {jobs}.")
+        lines.append("")
+
+    return lines
+
+
 def step_change_lines(step_changes: list[dict]) -> list[str]:
     if not step_changes:
         return []
@@ -200,12 +247,6 @@ def step_change_lines(step_changes: list[dict]) -> list[str]:
         "modified": "Step modificado",
         "reordered": "Ordem relativa alterada",
         "unmatched": "Correspondência indeterminada",
-    }
-    states = {
-        "active": "ativo",
-        "skipped": "pulado",
-        "indeterminate": "indeterminado",
-        "event_excluded": "evento excluído pelo workflow",
     }
     lines = ["", "## Alterações nos steps", ""]
     for change in step_changes:
@@ -222,88 +263,86 @@ def step_change_lines(step_changes: list[dict]) -> list[str]:
                 line += f" ({inline_code(name)})"
             lines.append(line + ".")
 
+        explanations = change.get("explanations", [])
+        explained_fields = set()
+        fields_with_values = set()
+        fields_with_context = set()
+        for explanation in explanations:
+            field = explanation["field"]
+            explained_fields.add(field)
+            if "before" in explanation and "after" in explanation:
+                fields_with_values.add(field)
+            if "context_comparisons" in explanation:
+                fields_with_context.add(field)
+
         for field, values in change["fields"].items():
-            before = inline_code(values["before"])
-            after = inline_code(values["after"])
+            if field in fields_with_values:
+                continue
+            before = change_value_text(values["before"])
+            after = change_value_text(values["after"])
             lines.append(f"- {inline_code(field)} passou de {before} para {after}.")
 
-        if change["other_fields"]:
-            names = names_as_code(change["other_fields"])
+        other_fields = []
+        for field in change["other_fields"]:
+            if field not in explained_fields:
+                other_fields.append(field)
+        if other_fields:
+            names = names_as_code(other_fields)
             lines.append(f"- Outros campos alterados {names}.")
 
+        lines.extend(explanation_lines(explanations))
         policy = change["fields"].get("continue-on-error")
-        if policy is not None:
+        if policy is not None and "continue-on-error" not in explained_fields:
             if policy["before"] is False and policy["after"] is True:
-                lines.append("- Efeito possível. Se o step falhar, sua falha passa a ser tolerada na conclusão do job.")
+                lines.append("- Se o step falhar, sua falha passa a ser tolerada na conclusão do job.")
             elif policy["before"] is True and policy["after"] is False:
-                lines.append("- Efeito possível. Se o step falhar, sua falha pode voltar a reprovar o job.")
+                lines.append("- Se o step falhar, sua falha pode voltar a reprovar o job.")
             else:
                 lines.append("- A tolerância à falha depende do valor configurado na execução.")
 
         if change["change"] == "unmatched":
             lines.append("- O modelo não encontrou uma correspondência única entre as versões.")
 
-        if "context_comparisons" in change:
+        if "context_comparisons" in change and "if" not in fields_with_context:
             context_comparisons = change["context_comparisons"]
             if not context_comparisons:
                 lines.append("- A avaliação condicional requer contextos de evento.")
-            for comparison in context_comparisons:
-                context = context_text(comparison["context"])
-                before = states[comparison["before"]]
-                after = states[comparison["after"]]
-                lines.append(f"- Estado modelado no contexto {context} (**{before} → {after}**).")
+            lines.extend(context_comparison_lines(context_comparisons))
         lines.append("")
     return lines
 
 
-def impact_link_lines(report: dict) -> list[str]:
-    links = report.get("impact_links", [])
-    if not links:
-        return []
+def impact_link_text(link: dict) -> str:
+    evidence = link["evidence"]
+    if link["type"] == "upload_condition_changed":
+        producer = inline_code(evidence["producer_job"])
+        position = evidence["producer_step_after"]
+        artifact = inline_code(evidence["artifact"])
+        context = context_text(link["context"])
+        return (
+            f"Alterar o `if` do upload de {artifact} em {producer}, step {position}, "
+            f"fez o upload passar de ativo para pulado no cenário {context}. "
+            "Restaurar somente o `if` anterior reativa o upload no modelo e mantém o download ativo."
+        )
 
-    findings_by_id = {}
-    for finding in report["after"]["findings"]:
-        findings_by_id[finding["id"]] = finding
+    source, target = evidence["removed_edge"]
+    source_text = inline_code(source)
+    target_text = inline_code(target)
+    if link["type"] == "artifact_order_lost":
+        artifact = inline_code(evidence["artifact"])
+        return (
+            f"O download de {artifact} perdeu a precedência reconhecida. Restaurar "
+            f"{source_text} em `needs` de {target_text} recupera a ordem no modelo."
+        )
 
-    lines = ["", "## Impactos explicados", ""]
-    for link in links:
-        finding = findings_by_id[link["finding_id"]]
-        rule = inline_code(finding["rule"])
-        location = location_text(link["location"])
-        evidence = link["evidence"]
-        if link["type"] == "upload_condition_changed":
-            producer = inline_code(evidence["producer_job"])
-            position = evidence["producer_step_after"]
-            artifact = inline_code(evidence["artifact"])
-            context = context_text(link["context"])
-            lines.append(
-                f"- {rule} em {location}. Alterar o `if` do upload de {artifact} "
-                f"em {producer}, step {position}, fez o upload passar de ativo para pulado "
-                f"no contexto {context}. Restaurar somente o `if` anterior "
-                "reativa o upload no modelo e mantém o download ativo."
-            )
-            continue
-
-        source, target = evidence["removed_edge"]
-        source_text = inline_code(source)
-        target_text = inline_code(target)
-        if link["type"] == "artifact_order_lost":
-            artifact = inline_code(evidence["artifact"])
-            effect = (
-                f"O download de {artifact} perdeu a precedência reconhecida. Restaurar "
-                f"{source_text} em `needs` de {target_text} recupera a ordem no modelo."
-            )
-        else:
-            reference = inline_code(evidence["reference"])
-            effect = (
-                f"Remover {source_text} do `needs` direto de {target_text} deixa "
-                f"{reference} sem a entrada do produtor no contexto."
-            )
-            if evidence["order_preserved"]:
-                effect += " A ordem entre os jobs permanece por um caminho indireto."
-
-        lines.append(f"- {rule} em {location}. {effect}")
-    return lines
+    reference = inline_code(evidence["reference"])
+    effect = (
+        f"Remover {source_text} do `needs` direto de {target_text} deixa "
+        f"{reference} sem a entrada do produtor no contexto."
+    )
+    if evidence["order_preserved"]:
+        effect += " A ordem entre os jobs permanece por um caminho indireto."
+    return effect
 
 
 def finding_explanation(finding: dict) -> tuple[str, str, str]:
@@ -361,31 +400,32 @@ def finding_explanation(finding: dict) -> tuple[str, str, str]:
     if rule == "R06_NEEDS_DIRECT_DEPENDENCY":
         title = "Referência ao contexto needs sem dependência direta"
         reference = inline_code(evidence["reference"])
-        explanation = f"O job usa {reference}. {evidence['reason']}"
+        explanation = f"O job usa {reference}. {safe_cell(evidence['reason'])}"
         consequence = "O contexto needs do consumidor fica sem a entrada do job referenciado."
         return title, explanation, consequence
 
     return safe_cell(rule), safe_cell(evidence["reason"]), ""
 
 
-def finding_lines(findings: list[dict]) -> list[str]:
+def finding_brief(finding: dict) -> str:
+    title, _, _ = finding_explanation(finding)
+    location = finding.get("location")
+    if location:
+        where = location_text(location)
+    else:
+        where = names_as_code(finding["jobs"])
+    brief = f"**{title}** em {where}."
+    if finding.get("suggestion"):
+        brief += f" {safe_cell(finding['suggestion'])}"
+    return brief
+
+
+def finding_lines(findings: list[dict], impact_links: dict) -> list[str]:
     lines = []
-
-    if not findings:
-        lines.append("Nenhum achado pelas regras implementadas no escopo analisado.")
-
     for current_finding in findings:
         rule = inline_code(current_finding["rule"])
         title, explanation, consequence = finding_explanation(current_finding)
-        kind = current_finding["kind"]
-        if kind == "warning":
-            kind = "Alerta"
-        elif kind == "opportunity":
-            kind = "Oportunidade de revisão"
-        else:
-            kind = safe_cell(kind)
-
-        lines.extend([f"### {title} ({rule})", "", kind, ""])
+        lines.extend([f"### {title} ({rule})", ""])
 
         location = current_finding.get("location")
         if location:
@@ -399,30 +439,66 @@ def finding_lines(findings: list[dict]) -> list[str]:
                 step = inline_code(consumer_step)
                 lines.extend([f"O step consumidor ocupa a posição {step} na sua lista.", ""])
 
+        for link in impact_links.get(current_finding.get("id"), []):
+            lines.extend([f"**Mudança associada** {impact_link_text(link)}", ""])
+
         lines.extend([f"**Evidência** {explanation}", ""])
         if consequence:
             lines.extend([f"**Consequência possível** {consequence}", ""])
-
-        context = current_finding["context"]
-        if context:
-            modeled_context = context_text(context)
-            lines.extend([f"**Contexto modelado** {modeled_context}.", ""])
-        else:
-            lines.extend(["**Contexto** análise da estrutura do workflow.", ""])
 
         if current_finding["suggestion"]:
             suggestion = safe_cell(current_finding["suggestion"])
             lines.extend([f"**Revisão sugerida** {suggestion}", ""])
 
+        context = current_finding["context"]
+        if context:
+            modeled_context = context_text(context)
+            lines.extend([f"**Contexto modelado** {modeled_context}.", ""])
+
     return lines
 
 
-def coverage_detail_line(detail: dict) -> str:
+def outcomes_lines(analysis: dict, links: list[dict]) -> list[str]:
+    warnings = []
+    opportunities = []
+    for finding in analysis["findings"]:
+        if finding["kind"] == "warning":
+            warnings.append(finding)
+        elif finding["kind"] == "opportunity":
+            opportunities.append(finding)
+
+    impacts = {}
+    for link in links:
+        impacts.setdefault(link["finding_id"], []).append(link)
+
+    lines = ["", "## Alertas", ""]
+    if warnings:
+        lines.extend(finding_lines(warnings, impacts))
+    else:
+        lines.append("Nenhum alerta nas verificações aplicáveis ao escopo analisado.")
+    lines.extend(["", "## Oportunidades de revisão", ""])
+    if opportunities:
+        lines.extend(finding_lines(opportunities, impacts))
+    else:
+        lines.append("Nenhuma oportunidade de revisão identificada.")
+        for record in analysis.get("coverage", []):
+            if record["analysis"] == "R05_PARALLEL_REVIEW":
+                if record["status"] in ("not_applicable", "suspended", "partial"):
+                    lines.extend(["", safe_cell(" ".join(record["reasons"]))])
+                break
+    return lines
+
+
+def coverage_detail_line(detail: dict, steps: list[int]) -> str:
     description = safe_cell(detail["message"])
     qualifiers = []
 
     location = detail.get("location")
-    if location:
+    if len(steps) > 1:
+        job = inline_code(location["job"])
+        step_numbers = names_as_code(steps)
+        qualifiers.append(f"job {job}, steps {step_numbers} (posições na lista)")
+    elif location:
         qualifiers.append(location_text(location))
 
     context = detail.get("context")
@@ -457,6 +533,10 @@ def coverage_detail_line(detail: dict) -> str:
     if reference:
         qualifiers.append(f"referência {inline_code(reference)}")
 
+    references = detail.get("references")
+    if references:
+        qualifiers.append(f"referências {names_as_code(references)}")
+
     if qualifiers:
         qualifier_text = ", ".join(qualifiers)
         return f"- {description} ({qualifier_text})"
@@ -464,64 +544,100 @@ def coverage_detail_line(detail: dict) -> str:
     return f"- {description}"
 
 
-def coverage_lines(snapshots: list[tuple[str, dict]]) -> list[str]:
-    lines = []
-    coverage_started = False
-
-    for label, analysis in snapshots:
-        coverage = analysis.get("coverage")
-        if not coverage:
+def grouped_coverage_details(details: list[dict]) -> list[str]:
+    grouped_details = []
+    steps_by_signature = {}
+    for detail in details:
+        location = detail.get("location", {})
+        step = location.get("step")
+        if step is None:
+            grouped_details.append((detail, []))
             continue
 
-        if not coverage_started:
-            lines.extend(["", "## Cobertura da análise", ""])
-            coverage_started = True
+        group = detail.copy()
+        signature_location = location.copy()
+        del signature_location["step"]
+        group["location"] = signature_location
+        signature = json.dumps(group, sort_keys=True)
+        steps = steps_by_signature.get(signature)
+        if steps is None:
+            steps = [step]
+            steps_by_signature[signature] = steps
+            grouped_details.append((detail, steps))
+        elif step not in steps:
+            steps.append(step)
 
-        if len(snapshots) > 1:
-            lines.extend([f"### Cobertura {label.lower()}", ""])
+    lines = []
+    for detail, steps in grouped_details:
+        lines.append(coverage_detail_line(detail, steps))
+    return lines
 
-        lines.extend([
-            "| Análise | Situação | Escopo | Motivos |",
-            "|---|---|---|---|",
-        ])
-        detail_lines = []
 
+def coverage_lines(snapshots: list[tuple[str, dict]]) -> list[str]:
+    coverage_by_label = {}
+    for label, analysis in snapshots:
+        coverage = analysis.get("coverage")
+        if coverage:
+            coverage_by_label[label] = coverage
+    if not coverage_by_label:
+        return []
+
+    lines = [
+        "",
+        "## Cobertura da análise",
+        "",
+        "<details>",
+        "<summary>Ver verificações, cenários e limites</summary>",
+        "",
+    ]
+    scope_groups = []
+    if len(snapshots) > 1:
+        before = coverage_by_label.get("Antes", [])
+        after = coverage_by_label.get("Depois", [])
+        shared = []
+        before_only = []
+        after_only = []
+        for record in after:
+            if record in before:
+                shared.append(record)
+            else:
+                after_only.append(record)
+        for record in before:
+            if record not in after:
+                before_only.append(record)
+        scope_groups = [
+            ("Na versão proposta", after_only),
+            ("Na versão anterior", before_only),
+            ("Nas duas versões", shared),
+        ]
+    else:
+        scope_groups.append(("", coverage_by_label["Workflow"]))
+
+    for label, coverage in scope_groups:
+        if not coverage:
+            continue
+        if label:
+            lines.extend([f"### {label}", ""])
         for record in coverage:
-            name = COVERAGE_NAMES.get(record["analysis"], record["analysis"])
+            name = safe_cell(COVERAGE_NAMES.get(record["analysis"], record["analysis"]))
             state = COVERAGE_STATES.get(record["status"], record["status"])
-            reasons = " / ".join(record["reasons"])
-            if not reasons:
-                reasons = "—"
-
-            values = [name, state, record["scope"], reasons]
-            safe_values = []
-            for value in values:
-                safe_values.append(safe_cell(value))
-            row = "| " + " | ".join(safe_values) + " |"
-            lines.append(row)
-
+            reasons = safe_cell(" ".join(record["reasons"]))
+            lines.extend([f"**{name} · {safe_cell(state)}**", "", reasons, ""])
             if record["details"]:
-                detail_lines.extend([f"**{safe_cell(name)}**", ""])
-                for detail in record["details"]:
-                    detail_lines.append(coverage_detail_line(detail))
-                detail_lines.append("")
+                lines.extend(grouped_coverage_details(record["details"]))
+                lines.append("")
 
-        lines.append("")
-        if detail_lines:
-            lines.extend(["<details>", "<summary>Detalhes da cobertura</summary>", ""])
-            lines.extend(detail_lines)
-            lines.extend(["</details>", ""])
-
+    lines.extend(["</details>", ""])
     return lines
 
 
 def unordered_pair_lines(analysis: dict) -> list[str]:
     unordered_pairs = analysis["structurally_unordered_pairs"]
+    if not unordered_pairs:
+        return []
     lines = [
         "",
-        "## Pares sem ordem imposta por needs",
-        "",
-        f"Pares identificados **{len(unordered_pairs)}**.",
+        "**Pares sem ordem imposta por needs**",
         "",
     ]
 
@@ -537,42 +653,89 @@ def unordered_pair_lines(analysis: dict) -> list[str]:
     return lines
 
 
+def graph_lines(analysis: dict, before: dict | None) -> list[str]:
+    after_diagram = diagram(analysis)
+    if before is None:
+        return ["", "## Grafo de dependências", "", "```mermaid", after_diagram, "```"]
+
+    before_diagram = diagram(before)
+    if before_diagram == after_diagram:
+        return [
+            "",
+            "## Grafo de dependências",
+            "",
+            "O grafo é igual nas duas versões.",
+            "",
+            "```mermaid",
+            after_diagram,
+            "```",
+        ]
+    return [
+        "",
+        "## Grafos de dependências",
+        "",
+        "### Antes",
+        "",
+        "```mermaid",
+        before_diagram,
+        "```",
+        "",
+        "### Depois",
+        "",
+        "```mermaid",
+        after_diagram,
+        "```",
+    ]
+
+
 def assumption_lines(report: dict, snapshots: list[tuple[str, dict]]) -> list[str]:
-    lines = ["", "## Premissas e limites", ""]
+    lines = [
+        "",
+        "<details>",
+        "<summary>Premissas e limites gerais</summary>",
+        "",
+    ]
 
     for assumption in report["assumptions"]:
         lines.append(f"- {safe_cell(assumption)}")
 
+    limitations = {}
     for label, analysis in snapshots:
         for limitation in analysis["limitations"]:
-            lines.append(f"- **{label}** {safe_cell(limitation)}")
+            limitations.setdefault(limitation, []).append(label)
+    for limitation, labels in limitations.items():
+        description = safe_cell(limitation)
+        if len(snapshots) < 2:
+            lines.append(f"- {description}")
+        elif len(labels) == 1:
+            lines.append(f"- **{labels[0]}** {description}")
+        else:
+            lines.append(f"- **Nas duas versões** {description}")
 
+    lines.extend(["", "</details>"])
     return lines
 
 
 def markdown(report: dict) -> str:
     mode = report.get("mode", "compare")
+    lines = overview_lines(report, mode)
 
     if mode == "audit":
         analysis = report["analysis"]
-        lines = audit_lines(report)
-        findings_title = "## Alertas e oportunidades do workflow"
+        before = None
         snapshots = [("Workflow", analysis)]
     else:
         analysis = report["after"]
-        lines = comparison_lines(report)
-        lines.extend(step_change_lines(report.get("step_changes", [])))
-        lines.extend(impact_link_lines(report))
-        findings_title = "## Alertas e oportunidades da versão modificada"
-        snapshots = [
-            ("Antes", report["before"]),
-            ("Depois", report["after"]),
-        ]
+        before = report["before"]
+        snapshots = [("Antes", before), ("Depois", analysis)]
 
-    lines.extend(["", findings_title, ""])
-    lines.extend(finding_lines(analysis["findings"]))
-    lines.extend(coverage_lines(snapshots))
+    lines.extend(outcomes_lines(analysis, report.get("impact_links", [])))
+    if mode != "audit":
+        lines.extend(change_lines(report["changes"]))
+        lines.extend(step_change_lines(report.get("step_changes", [])))
+    lines.extend(graph_lines(analysis, before))
     lines.extend(unordered_pair_lines(analysis))
+    lines.extend(coverage_lines(snapshots))
     lines.extend(assumption_lines(report, snapshots))
 
     rendered_text = "\n".join(lines)

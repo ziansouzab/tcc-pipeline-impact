@@ -192,6 +192,7 @@ class PullRequestAuditTests(unittest.TestCase):
         self.assertIn("Erro de auditoria", self.read_summary())
         self.assertIn(".github/workflows/broken.yml", self.read_summary())
         self.assertIn("**1** alerta", self.read_summary())
+        self.assertIn("verify", self.read_summary())
         self.assertIn(head, self.read_summary())
 
     def test_comparison_uses_the_same_github_pull_request_context_for_both_revisions(self):

@@ -221,6 +221,8 @@ def run_analysis(after_file, output_directory, before_file=None, contexts_path=N
 
 
 def audit(directory):
+    from pipeline_impact.reporting import finding_brief
+
     plan_text = (directory / "plan.json").read_text(encoding="utf-8")
     plan = json.loads(plan_text)
     contexts_path = None
@@ -282,6 +284,12 @@ def audit(directory):
             counts = report["summary"]
             warning_count = counts.get("warning", 0)
             opportunity_count = counts.get("opportunity", 0)
+            analysis = report["analysis"] if mode == "audit" else report["after"]
+            first_findings = {}
+            for finding in analysis["findings"]:
+                kind = finding["kind"]
+                if kind not in first_findings:
+                    first_findings[kind] = finding_brief(finding)
             if not (output_directory / "report.md").is_file():
                 raise AuditError("o relatório Markdown está ausente")
             output_directory.rename(reports / report_id)
@@ -295,16 +303,20 @@ def audit(directory):
         result = f"**{warning_count}** alerta(s) e **{opportunity_count}** oportunidade(s) atuais."
         if mode == "compare":
             change_count = counts.get("changes", 0)
-            result = f"**{change_count}** mudança(s) modelada(s). {result}"
+            result = f"**{change_count}** registro(s) de mudança. {result}"
             if "impact_links" in report:
                 impact_count = len(report["impact_links"])
-                result += f" **{impact_count}** impacto(s) explicado(s)."
+                result += f" **{impact_count}** vínculo(s) com alertas."
 
         markdown_path = inline_code(f"{report_id}/report.md")
         json_path = inline_code(f"{report_id}/report.json")
         summary.append(
             f"- {display_path} em modo de {mode_label}. {revisions} {result} Arquivos {markdown_path} e {json_path}."
         )
+        if "warning" in first_findings:
+            summary.append(f"  - **Alerta** · {first_findings['warning']}")
+        if "opportunity" in first_findings:
+            summary.append(f"  - **Oportunidade** · {first_findings['opportunity']}")
     write_github_file("GITHUB_STEP_SUMMARY", "\n".join(summary))
     if failed:
         return 1

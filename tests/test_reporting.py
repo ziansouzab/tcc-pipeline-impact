@@ -3,7 +3,7 @@ import unittest
 from pipeline_impact.analyzer import audit, compare
 from pipeline_impact.model import load
 from pipeline_impact.reporting import markdown
-from tests.helpers import CONTEXT_FIXTURES, ROOT, artifact, simple, workflow
+from tests.helpers import CONTEXT, CONTEXT_FIXTURES, ROOT, artifact, simple, workflow
 
 
 class ReportingTests(unittest.TestCase):
@@ -41,8 +41,10 @@ class ReportingTests(unittest.TestCase):
         self.assertIn("### Antes", report_text)
         self.assertIn("### Depois", report_text)
         self.assertIn("Mudanças identificadas: **2**", report_text)
-        self.assertIn("### Cobertura antes", report_text)
-        self.assertIn("### Cobertura depois", report_text)
+        self.assertIn("### Na versão anterior", report_text)
+        self.assertIn("### Na versão proposta", report_text)
+        self.assertLess(report_text.index("## Alertas"), report_text.index("## Grafos"))
+        self.assertLess(report_text.index("**Mudança associada**"), report_text.index("## Mudanças e efeitos"))
 
     def test_header_uses_report_tool_version(self):
         workflow_path = ROOT / "cases/03-artefato-sem-ordem/before.yml"
@@ -51,8 +53,8 @@ class ReportingTests(unittest.TestCase):
 
         report_text = markdown(analysis)
 
-        self.assertIn("Protótipo 9.8.7", report_text)
-        self.assertIn("Nenhum achado pelas regras implementadas", report_text)
+        self.assertIn("Protótipo `9.8.7`", report_text)
+        self.assertIn("Nenhum alerta nas verificações aplicáveis", report_text)
 
     def test_conditional_artifact_explains_upload_location_and_context(self):
         workflow_path = ROOT / "cases/05-upload-condicional/after.yml"
@@ -97,9 +99,28 @@ class ReportingTests(unittest.TestCase):
         report_text = markdown(analysis)
 
         self.assertIn(f"`` {artifact_name} ``", report_text)
-        self.assertIn("&lt;script&gt; &#91;outro&#93;&#40;https&#58;//example.org&#41;", report_text)
+        self.assertIn("A expressão está fora do subconjunto interpretado.", report_text)
         self.assertNotIn(invalid_condition, report_text)
         self.assertNotIn("PRIVATE_REPORT_COMMAND", report_text)
+
+    def test_same_graph_shows_timeout_and_groups_repeated_runtime_dependencies(self):
+        runtime_condition = "steps.prepare.outputs.ready == 'true'"
+        steps = [
+            {"id": "prepare", "run": "echo prepare"},
+            {"if": runtime_condition, "run": "echo first"},
+            {"if": runtime_condition, "run": "echo second"},
+        ]
+        before = workflow({"audit": simple(steps=steps, **{"timeout-minutes": 10})})
+        after = workflow({"audit": simple(steps=steps, **{"timeout-minutes": 12})})
+
+        report_text = markdown(compare(before, after, [CONTEXT]))
+
+        self.assertEqual(1, report_text.count("```mermaid"))
+        self.assertIn("`10` → `12`", report_text)
+        self.assertIn("Nenhuma oportunidade de revisão identificada.", report_text)
+        self.assertIn("Não há dependências diretas a examinar.", report_text)
+        self.assertIn("steps `2`, `3` (posições na lista)", report_text)
+        self.assertEqual(1, report_text.count("`steps.prepare.outputs.ready`"))
 
     def test_legacy_comparison_preserves_known_step_without_inferring_consumer_job(self):
         case_directory = ROOT / "cases/03-artefato-sem-ordem"

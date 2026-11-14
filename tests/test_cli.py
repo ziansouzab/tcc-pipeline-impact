@@ -177,7 +177,7 @@ class CliTests(unittest.TestCase):
         report_text = json.dumps(report)
         markdown_text = markdown(report)
         self.assertNotIn("PRIVATE_EXAMPLE", report_text)
-        self.assertIn("STEP_CHANGE", markdown_text)
+        self.assertIn("## Alterações nos steps", markdown_text)
 
     def test_audit_reports_only_current_workflow(self):
         workflow_path = ROOT / "cases/03-artefato-sem-ordem/after.yml"

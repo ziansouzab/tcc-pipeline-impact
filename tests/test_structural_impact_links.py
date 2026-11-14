@@ -49,7 +49,7 @@ class StructuralImpactLinkTests(unittest.TestCase):
         self.assertIs(evidence["precedence_after"], False)
         self.assertIs(evidence["precedence_with_restored_edge"], True)
         rendered = markdown(report)
-        self.assertIn("## Impactos explicados", rendered)
+        self.assertIn("**Mudança associada**", rendered)
         self.assertIn(ARTIFACT_ORDER_RULE, rendered)
 
     def test_does_not_link_removal_when_transitive_order_still_protects_artifact(self):

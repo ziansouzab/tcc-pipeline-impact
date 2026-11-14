@@ -66,7 +66,7 @@ class ConditionalImpactLinkTests(unittest.TestCase):
         feature_push = {"github.event_name": "push", "github.ref": "refs/heads/feature"}
         self.assertCountEqual([feature_push, PULL_REQUEST], linked_contexts)
         self.assertNotIn(CONTEXT, linked_contexts)
-        self.assertIn("## Impactos explicados", markdown(report))
+        self.assertIn("**Mudança associada**", markdown(report))
 
     def test_does_not_infer_conditional_impact_without_a_context(self):
         case_directory = ROOT / "cases/05-upload-condicional"
