@@ -1,0 +1,53 @@
+name: Validação do Pipeline Impact 0.5.0
+on:
+  pull_request:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  verify:
+    name: Suíte e protocolo de avaliação
+    if: github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'laboratorio/revalidacao-050-20261127'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Preparar Python e PyYAML
+        run: |
+          python3 -m venv "$RUNNER_TEMP/pipeline-impact-venv"
+          "$RUNNER_TEMP/pipeline-impact-venv/bin/python" -m pip install -r requirements-repro.txt
+          mkdir "$RUNNER_TEMP/pipeline-impact-evidence"
+      - name: Executar a suíte da versão publicada
+        run: |
+          PYTHONPATH=src "$RUNNER_TEMP/pipeline-impact-venv/bin/python" -m unittest discover -s tests -v 2>&1 | tee "$RUNNER_TEMP/pipeline-impact-evidence/suite.txt"
+          grep -E '^(Ran [0-9]+ tests|OK$)' "$RUNNER_TEMP/pipeline-impact-evidence/suite.txt" >> "$GITHUB_STEP_SUMMARY"
+      - name: Reexecutar os 12 casos do protocolo
+        run: |
+          git archive --format=zip --output="$RUNNER_TEMP/fonte-257759e.zip" 257759e60c96fc1c23597d276ab54dfb3d996421 src pyproject.toml requirements-repro.txt
+          "$RUNNER_TEMP/pipeline-impact-venv/bin/python" evaluation/0.5.0/executar_avaliacao.py "$RUNNER_TEMP/fonte-257759e.zip" "$RUNNER_TEMP/pipeline-impact-evidence/protocolo" | tee "$RUNNER_TEMP/pipeline-impact-evidence/protocolo.txt"
+          "$RUNNER_TEMP/pipeline-impact-venv/bin/python" - "$RUNNER_TEMP/pipeline-impact-evidence/protocolo/resultado.json" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          dados = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+          casos = dados["casos"]
+          conformes = sum(caso["conforme_protocolo"] for caso in casos)
+          print(f"Protocolo 0.5.0: {conformes} de {len(casos)} casos conforme")
+          if len(casos) != 12 or conformes != 12:
+              raise SystemExit(1)
+          PY
+          cat "$RUNNER_TEMP/pipeline-impact-evidence/protocolo.txt" >> "$GITHUB_STEP_SUMMARY"
+      - name: Disponibilizar evidências
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: pipeline-impact-validacao-050
+          path: ${{ runner.temp }}/pipeline-impact-evidence
+          if-no-files-found: warn
