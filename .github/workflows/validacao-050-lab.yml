@@ -19,15 +19,17 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
       - name: Preparar Python e PyYAML
+        id: prepare
         run: |
           python3 -m venv "$RUNNER_TEMP/pipeline-impact-venv"
           "$RUNNER_TEMP/pipeline-impact-venv/bin/python" -m pip install -r requirements-repro.txt
           mkdir "$RUNNER_TEMP/pipeline-impact-evidence"
       - name: Executar a suíte da versão publicada
         run: |
-          PYTHONPATH=src "$RUNNER_TEMP/pipeline-impact-venv/bin/python" -m unittest discover -s tests -v 2>&1 | tee "$RUNNER_TEMP/pipeline-impact-evidence/suite.txt"
+          PYTHONPATH="$GITHUB_WORKSPACE/src" "$RUNNER_TEMP/pipeline-impact-venv/bin/python" -m unittest discover -s tests -v 2>&1 | tee "$RUNNER_TEMP/pipeline-impact-evidence/suite.txt"
           grep -E '^(Ran [0-9]+ tests|OK$)' "$RUNNER_TEMP/pipeline-impact-evidence/suite.txt" >> "$GITHUB_STEP_SUMMARY"
       - name: Reexecutar os 12 casos do protocolo
+        if: ${{ !cancelled() && steps.prepare.outcome == 'success' }}
         run: |
           git archive --format=zip --output="$RUNNER_TEMP/fonte-257759e.zip" 257759e60c96fc1c23597d276ab54dfb3d996421 src pyproject.toml requirements-repro.txt
           "$RUNNER_TEMP/pipeline-impact-venv/bin/python" evaluation/0.5.0/executar_avaliacao.py "$RUNNER_TEMP/fonte-257759e.zip" "$RUNNER_TEMP/pipeline-impact-evidence/protocolo" | tee "$RUNNER_TEMP/pipeline-impact-evidence/protocolo.txt"
