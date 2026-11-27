@@ -3,7 +3,9 @@
   "title": "Sem mudança de política de falha",
   "plan_rule": "R04",
   "expected": {
-    "change_rules": [],
+    "change_rules": [
+      "UNMODELED_WORKFLOW_CHANGE"
+    ],
     "after_rules": [],
     "absent_warning_rules": [
       "R02_ARTIFACT_ORDER",
