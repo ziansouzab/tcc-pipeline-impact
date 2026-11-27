@@ -1,0 +1,24 @@
+name: Avaliação de análise de impacto
+'on': pull_request
+jobs:
+  construir:
+    runs-on: ubuntu-24.04
+    steps:
+    - id: decidir
+      run: echo "emitir=yes" >> "$GITHUB_OUTPUT"
+    - run: echo manifesto > saida.txt
+    - id: publicar
+      uses: actions/upload-artifact@v4
+      with:
+        name: manifesto
+        path: saida.txt
+      if: ${{ steps.decidir.outputs.emitir == 'yes' }}
+  examinar:
+    runs-on: ubuntu-24.04
+    needs: construir
+    steps:
+    - id: obter
+      uses: actions/download-artifact@v4
+      with:
+        name: manifesto
+        path: recebidos

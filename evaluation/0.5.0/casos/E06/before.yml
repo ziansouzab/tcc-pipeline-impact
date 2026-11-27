@@ -1,0 +1,14 @@
+name: Avaliação de análise de impacto
+'on': pull_request
+jobs:
+  conferir:
+    runs-on: ubuntu-24.04
+    steps:
+    - run: echo conferência
+  registrar:
+    runs-on: ubuntu-24.04
+    needs: conferir
+    steps:
+    - env:
+        ESTADO: ${{ needs.conferir.result }}
+      run: echo "$ESTADO"

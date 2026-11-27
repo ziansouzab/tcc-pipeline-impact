@@ -1,0 +1,18 @@
+name: Avaliação de análise de impacto
+'on': pull_request
+jobs:
+  rodada:
+    runs-on: ubuntu-24.04
+    steps:
+    - run: echo amostra > saida.txt
+    - id: publicar
+      uses: actions/upload-artifact@v4
+      with:
+        name: amostra
+        path: saida.txt
+      if: ${{ startsWith(github.head_ref, 'release/') }}
+    - id: obter
+      uses: actions/download-artifact@v4
+      with:
+        name: amostra
+        path: recebidos

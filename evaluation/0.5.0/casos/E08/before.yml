@@ -1,0 +1,21 @@
+name: Avaliação de análise de impacto
+'on': pull_request
+jobs:
+  salvar:
+    runs-on: ubuntu-24.04
+    steps:
+    - run: echo evidência > saida.txt
+    - id: publicar
+      uses: actions/upload-artifact@v4
+      with:
+        name: comprovante
+        path: saida.txt
+  verificar:
+    runs-on: ubuntu-24.04
+    needs: salvar
+    steps:
+    - id: obter
+      uses: actions/download-artifact@v4
+      with:
+        name: comprovante
+        path: recebidos

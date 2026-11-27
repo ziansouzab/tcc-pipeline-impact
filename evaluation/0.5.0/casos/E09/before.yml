@@ -1,0 +1,24 @@
+name: Avaliação de análise de impacto
+'on': pull_request
+jobs:
+  disponibilizar:
+    runs-on: ubuntu-24.04
+    steps:
+    - run: echo evidência > saida.txt
+    - id: publicar
+      uses: actions/upload-artifact@v4
+      with:
+        name: sumario
+        path: saida.txt
+  ler:
+    runs-on: ubuntu-24.04
+    steps:
+    - id: obter
+      uses: actions/download-artifact@v4
+      with:
+        name: sumario
+        path: recebidos
+  checagem:
+    runs-on: ubuntu-24.04
+    steps:
+    - run: echo verificacao
