@@ -1,0 +1,22 @@
+name: Avaliação de análise de impacto
+'on': pull_request
+jobs:
+  rotular:
+    runs-on: ubuntu-24.04
+    steps:
+    - id: definir
+      run: echo "rotulo=amostra" >> "$GITHUB_OUTPUT"
+    outputs:
+      rotulo: ${{ steps.definir.outputs.rotulo }}
+  organizar:
+    runs-on: ubuntu-24.04
+    needs: rotular
+    steps:
+    - run: echo organizando
+  resumir:
+    runs-on: ubuntu-24.04
+    needs: organizar
+    steps:
+    - env:
+        ROTULO: ${{ needs.rotular.outputs.rotulo }}
+      run: echo "$ROTULO"

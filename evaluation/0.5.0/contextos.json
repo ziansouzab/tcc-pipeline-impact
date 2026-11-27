@@ -1,0 +1,14 @@
+[
+  {
+    "github.event_name": "pull_request",
+    "github.ref": "refs/pull/201/merge",
+    "github.base_ref": "main",
+    "github.head_ref": "release/1.2"
+  },
+  {
+    "github.event_name": "pull_request",
+    "github.ref": "refs/pull/202/merge",
+    "github.base_ref": "develop",
+    "github.head_ref": "feature/revisar"
+  }
+]
