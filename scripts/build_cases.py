@@ -119,6 +119,7 @@ def dependency_list_reordered_case():
         "R01",
         before_workflow,
         after_workflow,
+        change_rules=["UNMODELED_WORKFLOW_CHANGE"],
         absent_rules=["R02_ARTIFACT_ORDER", "R03_ARTIFACT_CONDITION"],
     )
 
@@ -245,6 +246,7 @@ def preserved_failure_policy_case():
         "R04",
         before_workflow,
         after_workflow,
+        change_rules=["UNMODELED_WORKFLOW_CHANGE"],
         absent_rules=["R02_ARTIFACT_ORDER", "R03_ARTIFACT_CONDITION"],
     )
 
@@ -285,6 +287,7 @@ def required_dependency_case():
         "R05",
         before_workflow,
         after_workflow,
+        change_rules=["UNMODELED_WORKFLOW_CHANGE"],
         absent_rules=[
             "R02_ARTIFACT_ORDER",
             "R03_ARTIFACT_CONDITION",
@@ -309,6 +312,7 @@ def already_unordered_case():
         "R06",
         before_workflow,
         after_workflow,
+        change_rules=["UNMODELED_WORKFLOW_CHANGE"],
         absent_rules=[
             "R02_ARTIFACT_ORDER",
             "R03_ARTIFACT_CONDITION",
@@ -333,6 +337,7 @@ def preserved_sequence_case():
         "R06",
         before_workflow,
         after_workflow,
+        change_rules=["UNMODELED_WORKFLOW_CHANGE"],
         absent_rules=[
             "R02_ARTIFACT_ORDER",
             "R03_ARTIFACT_CONDITION",

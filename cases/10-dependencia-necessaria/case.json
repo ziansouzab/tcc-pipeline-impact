@@ -3,7 +3,9 @@
   "title": "Transferência de artefato bloqueia sugestão de remover dependência",
   "plan_rule": "R05",
   "expected": {
-    "change_rules": [],
+    "change_rules": [
+      "UNMODELED_WORKFLOW_CHANGE"
+    ],
     "after_rules": [],
     "absent_warning_rules": [
       "R02_ARTIFACT_ORDER",

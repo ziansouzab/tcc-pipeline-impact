@@ -3,7 +3,9 @@
   "title": "Reordenar a lista de needs não muda precedência",
   "plan_rule": "R01",
   "expected": {
-    "change_rules": [],
+    "change_rules": [
+      "UNMODELED_WORKFLOW_CHANGE"
+    ],
     "after_rules": [],
     "absent_warning_rules": [
       "R02_ARTIFACT_ORDER",
