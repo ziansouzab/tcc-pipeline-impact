@@ -1,0 +1,16 @@
+name: Verificação do contexto real do PR
+on:
+  pull_request:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  checks:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Conferir destino esperado
+        if: github.base_ref == 'main'
+        run: echo destino confirmado
+      - name: Conferir evento alternativo
+        if: github.event_name == 'push'
+        run: echo push

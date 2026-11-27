@@ -1,1 +1,2 @@
 Entrada da aplicação de laboratório.
+Controle da revalidação on-line da versão 0.5.0.

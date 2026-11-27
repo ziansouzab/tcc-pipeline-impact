@@ -1,4 +1,4 @@
-name: Caso 03 de laboratório
+name: Caso 03 de laboratório com precedência restaurada
 
 on: workflow_dispatch
 

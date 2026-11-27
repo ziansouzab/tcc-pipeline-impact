@@ -34,6 +34,9 @@ class DevelopmentCorpusTests(unittest.TestCase):
 
                 if not expected["change_rules"]:
                     self.assertEqual([], result["changes"])
+                elif expected_changes == {"UNMODELED_WORKFLOW_CHANGE"}:
+                    self.assertEqual(1, len(result["changes"]))
+                    self.assertEqual("name", result["changes"][0]["field"])
 
                 if expected["unordered_pairs"] is not None:
                     actual_pairs = result["after"]["structurally_unordered_pairs"]

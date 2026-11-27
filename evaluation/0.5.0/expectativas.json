@@ -1,0 +1,450 @@
+{
+  "registrado_em_utc": "2026-11-26T01:23:34.561554+00:00",
+  "commit": "257759e60c96fc1c23597d276ab54dfb3d996421",
+  "versao": "0.5.0",
+  "esquema": "0.6",
+  "contextos": {
+    "PR-A": {
+      "github.event_name": "pull_request",
+      "github.ref": "refs/pull/201/merge",
+      "github.base_ref": "main",
+      "github.head_ref": "release/1.2"
+    },
+    "PR-B": {
+      "github.event_name": "pull_request",
+      "github.ref": "refs/pull/202/merge",
+      "github.base_ref": "develop",
+      "github.head_ref": "feature/revisar"
+    }
+  },
+  "contextos_sha256": "c798404c4456f1556e2b53963a11e1e87d8aa12ae0377cc0a051bdc9a6370f1b",
+  "regras_verificadas": [
+    "R02_ARTIFACT_ORDER",
+    "R03_ARTIFACT_CONDITION",
+    "R06_NEEDS_DIRECT_DEPENDENCY"
+  ],
+  "unidade": "Um par de versões de workflow com os mesmos dois contextos de PR.",
+  "criterio": "Verificar alertas antes e depois por regra, localização e contexto. Verificar tipo, mudança apontada, diagnóstico e evidência de cada vínculo. Examinar cobertura nos casos indeterminados. Registrar vínculos conjuntos fora do escopo sem atribuir o alerta a apenas uma alteração.",
+  "casos": [
+    {
+      "id": "E01",
+      "grupo": "impacto",
+      "alteracao": "Remove dependência direta do consumidor.",
+      "justificativa_manual": "A inspeção pode chegar ao download antes do upload. Restaurar a aresta empacotar → inspecionar recupera a precedência.",
+      "alertas_antes": [],
+      "alertas_depois": [
+        {
+          "regra": "R02_ARTIFACT_ORDER",
+          "local": {
+            "job": "inspecionar",
+            "step": 2
+          },
+          "contexto": null
+        }
+      ],
+      "vinculos": [
+        {
+          "tipo": "artifact_order_lost",
+          "alerta": {
+            "regra": "R02_ARTIFACT_ORDER",
+            "local": {
+              "job": "inspecionar",
+              "step": 2
+            },
+            "contexto": null
+          },
+          "mudanca_job": "inspecionar",
+          "evidencia": {
+            "producer_job": "empacotar",
+            "consumer_job": "inspecionar",
+            "artifact": "pacote",
+            "removed_edge": [
+              "empacotar",
+              "inspecionar"
+            ],
+            "precedence_before": true,
+            "precedence_after": false,
+            "precedence_with_restored_edge": true
+          }
+        }
+      ],
+      "cobertura": [],
+      "sha256": {
+        "before.yml": "4d0d16c180348295be4c6e4913b1823c66a2d4fb48b53eb7868d48e4b7b776d9",
+        "after.yml": "f3e365e4af9f5a52b3572308243d80232b880c24c766c79fe3fd50c34dc51e05"
+      }
+    },
+    {
+      "id": "E02",
+      "grupo": "impacto",
+      "alteracao": "Remove aresta intermediária com consumidor inalterado.",
+      "justificativa_manual": "A preparação deixa de aguardar gerar. O YAML de consultar não muda, mas o caminho que garantia o upload antes do download desaparece.",
+      "alertas_antes": [],
+      "alertas_depois": [
+        {
+          "regra": "R02_ARTIFACT_ORDER",
+          "local": {
+            "job": "consultar",
+            "step": 1
+          },
+          "contexto": null
+        }
+      ],
+      "vinculos": [
+        {
+          "tipo": "artifact_order_lost",
+          "alerta": {
+            "regra": "R02_ARTIFACT_ORDER",
+            "local": {
+              "job": "consultar",
+              "step": 1
+            },
+            "contexto": null
+          },
+          "mudanca_job": "preparar",
+          "evidencia": {
+            "producer_job": "gerar",
+            "consumer_job": "consultar",
+            "artifact": "indice",
+            "removed_edge": [
+              "gerar",
+              "preparar"
+            ],
+            "precedence_before": true,
+            "precedence_after": false,
+            "precedence_with_restored_edge": true
+          }
+        }
+      ],
+      "cobertura": [],
+      "sha256": {
+        "before.yml": "0e0929c558b9ccef57e098b0dcf586a767996547d54f204ae232ca1dee01ead5",
+        "after.yml": "73c4865c26f16de28144dff5fcb0763a2da1dee7deee52db5a60127a8eab93a4"
+      }
+    },
+    {
+      "id": "E03",
+      "grupo": "impacto",
+      "alteracao": "Limita o upload a PRs destinados à branch main.",
+      "justificativa_manual": "O upload continua ativo no PR-A. No PR-B, destinado a develop, o upload é pulado e o consumidor permanece ativo. A precedência estrutural é preservada.",
+      "alertas_antes": [],
+      "alertas_depois": [
+        {
+          "regra": "R03_ARTIFACT_CONDITION",
+          "local": {
+            "job": "examinar",
+            "step": 1
+          },
+          "contexto": "PR-B"
+        }
+      ],
+      "vinculos": [
+        {
+          "tipo": "upload_condition_changed",
+          "alerta": {
+            "regra": "R03_ARTIFACT_CONDITION",
+            "local": {
+              "job": "examinar",
+              "step": 1
+            },
+            "contexto": "PR-B"
+          },
+          "mudanca_job": "produzir",
+          "evidencia": {
+            "producer_job": "produzir",
+            "consumer_job": "examinar",
+            "artifact": "inventario",
+            "producer_step_before": 2,
+            "producer_step_after": 2,
+            "consumer_step_before": 1,
+            "consumer_step_after": 1,
+            "upload_state_before": "active",
+            "upload_state_after": "skipped",
+            "upload_state_with_restored_if": "active"
+          }
+        }
+      ],
+      "cobertura": [],
+      "sha256": {
+        "before.yml": "3dc6c0c1e368b90ac7e5bdf30552d3952dc8f931cc136608d055d5cfec080fa7",
+        "after.yml": "bc9c63c01cfe85f180ee3b35efcd7dd003db7dded2fa8d9d88d82bc6a9358876"
+      }
+    },
+    {
+      "id": "E04",
+      "grupo": "impacto",
+      "alteracao": "Restringe o upload dentro do mesmo job à origem release/.",
+      "justificativa_manual": "O segundo step fica ativo no PR-A e pulado no PR-B. O terceiro step segue ativo em ambos e depende do artefato publicado pelo segundo.",
+      "alertas_antes": [],
+      "alertas_depois": [
+        {
+          "regra": "R03_ARTIFACT_CONDITION",
+          "local": {
+            "job": "rodada",
+            "step": 3
+          },
+          "contexto": "PR-B"
+        }
+      ],
+      "vinculos": [
+        {
+          "tipo": "upload_condition_changed",
+          "alerta": {
+            "regra": "R03_ARTIFACT_CONDITION",
+            "local": {
+              "job": "rodada",
+              "step": 3
+            },
+            "contexto": "PR-B"
+          },
+          "mudanca_job": "rodada",
+          "evidencia": {
+            "producer_job": "rodada",
+            "consumer_job": "rodada",
+            "artifact": "amostra",
+            "producer_step_before": 2,
+            "producer_step_after": 2,
+            "consumer_step_before": 3,
+            "consumer_step_after": 3,
+            "upload_state_before": "active",
+            "upload_state_after": "skipped",
+            "upload_state_with_restored_if": "active"
+          }
+        }
+      ],
+      "cobertura": [],
+      "sha256": {
+        "before.yml": "6bf531a31cc255868d3dd870f6a2beec91d937c163c8faf86e6146122907c179",
+        "after.yml": "6a63c2af6eceee8b9c5462dbeed6855dc7fbe38d770d47e4de9608a84a9f6371"
+      }
+    },
+    {
+      "id": "E05",
+      "grupo": "impacto",
+      "alteracao": "Retira acesso direto ao output mantendo caminho transitivo.",
+      "justificativa_manual": "Rotular ainda antecede resumir via organizar. A referência literal ao output exige rotular como dependência direta.",
+      "alertas_antes": [],
+      "alertas_depois": [
+        {
+          "regra": "R06_NEEDS_DIRECT_DEPENDENCY",
+          "local": {
+            "job": "resumir",
+            "step": 1,
+            "field": "env"
+          },
+          "contexto": null
+        }
+      ],
+      "vinculos": [
+        {
+          "tipo": "direct_needs_lost",
+          "alerta": {
+            "regra": "R06_NEEDS_DIRECT_DEPENDENCY",
+            "local": {
+              "job": "resumir",
+              "step": 1,
+              "field": "env"
+            },
+            "contexto": null
+          },
+          "mudanca_job": "resumir",
+          "evidencia": {
+            "producer_job": "rotular",
+            "consumer_job": "resumir",
+            "reference": "needs.rotular.outputs.rotulo",
+            "removed_edge": [
+              "rotular",
+              "resumir"
+            ],
+            "order_preserved": true
+          }
+        }
+      ],
+      "cobertura": [],
+      "sha256": {
+        "before.yml": "65d2f211f2af402db43156257be9e4fa54f4060b91b8504644cb62a5b9897a86",
+        "after.yml": "3e7ec86b1c1644cad6499f2e799058f94e2fc874572a1d7791e91f302ad9892a"
+      }
+    },
+    {
+      "id": "E06",
+      "grupo": "impacto",
+      "alteracao": "Retira acesso a resultado de job e elimina a precedência.",
+      "justificativa_manual": "A referência a needs.conferir.result permanece, mas conferir deixa de ser dependência direta e deixa de anteceder registrar.",
+      "alertas_antes": [],
+      "alertas_depois": [
+        {
+          "regra": "R06_NEEDS_DIRECT_DEPENDENCY",
+          "local": {
+            "job": "registrar",
+            "step": 1,
+            "field": "env"
+          },
+          "contexto": null
+        }
+      ],
+      "vinculos": [
+        {
+          "tipo": "direct_needs_lost",
+          "alerta": {
+            "regra": "R06_NEEDS_DIRECT_DEPENDENCY",
+            "local": {
+              "job": "registrar",
+              "step": 1,
+              "field": "env"
+            },
+            "contexto": null
+          },
+          "mudanca_job": "registrar",
+          "evidencia": {
+            "producer_job": "conferir",
+            "consumer_job": "registrar",
+            "reference": "needs.conferir.result",
+            "removed_edge": [
+              "conferir",
+              "registrar"
+            ],
+            "order_preserved": false
+          }
+        }
+      ],
+      "cobertura": [],
+      "sha256": {
+        "before.yml": "291dd3468bba080675a3eec5c61ba75910062fcea3eb2b3b32b1b9f45dd1ca40",
+        "after.yml": "97855372855b28be7a97b032d276d61c9375f4b4cc9182108dc46aa760292a63"
+      }
+    },
+    {
+      "id": "E07",
+      "grupo": "controle",
+      "alteracao": "Remove dependência direta redundante para transferência.",
+      "justificativa_manual": "O caminho montar → organizar → ler continua garantindo a ordem. O consumidor baixa um artefato e não usa needs.montar para ler outputs.",
+      "alertas_antes": [],
+      "alertas_depois": [],
+      "vinculos": [],
+      "cobertura": [],
+      "sha256": {
+        "before.yml": "2dce6e4c36ebea970d84c27fcddffe3a2657823bfb6238c25bd097cbbfa875b7",
+        "after.yml": "bcf1ec269af826cfb286d51c539d398bb574ade1ca74a5898cebedde36342756"
+      }
+    },
+    {
+      "id": "E08",
+      "grupo": "controle",
+      "alteracao": "Aplica a mesma condição ao upload e ao download.",
+      "justificativa_manual": "No PR-A, as duas etapas ficam ativas com a ordem preservada. No PR-B, as duas ficam inativas, sem tentativa de download.",
+      "alertas_antes": [],
+      "alertas_depois": [],
+      "vinculos": [],
+      "cobertura": [],
+      "sha256": {
+        "before.yml": "811f7f199bdb31159abc68459f052cca820391726e74700f92ec9c6199ee4460",
+        "after.yml": "1f580e1faa15d17c48f7ef6b9906ae6d3def8a8d1c28bc5e5afabf0048951e5b"
+      }
+    },
+    {
+      "id": "E09",
+      "grupo": "controle",
+      "alteracao": "Altera o nome de exibição de um job independente.",
+      "justificativa_manual": "O download já estava sem precedência garantida em before. A alteração de nome não modifica a relação entre produtor e consumidor.",
+      "alertas_antes": [
+        {
+          "regra": "R02_ARTIFACT_ORDER",
+          "local": {
+            "job": "ler",
+            "step": 1
+          },
+          "contexto": null
+        }
+      ],
+      "alertas_depois": [
+        {
+          "regra": "R02_ARTIFACT_ORDER",
+          "local": {
+            "job": "ler",
+            "step": 1
+          },
+          "contexto": null
+        }
+      ],
+      "vinculos": [],
+      "cobertura": [],
+      "sha256": {
+        "before.yml": "f25db99fe2e1786847f90a886df471b27fb4ea7e57ead9a471d69dc190791ba3",
+        "after.yml": "718d04a20910b46539749126d5603f3ebf1a89240435b8d029dfd5293608824f"
+      }
+    },
+    {
+      "id": "E10",
+      "grupo": "limite",
+      "alteracao": "Condiciona o upload ao resultado produzido por um script.",
+      "justificativa_manual": "A ordem permanece. Inferir o valor da saída exige interpretar a execução do comando. O cenário deve aparecer como indeterminado na análise de condição.",
+      "alertas_antes": [],
+      "alertas_depois": [],
+      "vinculos": [],
+      "cobertura": [
+        {
+          "analise": "condition_evaluation",
+          "status": "partial",
+          "detalhe": "runtime_value",
+          "local": {
+            "job": "construir",
+            "step": 3,
+            "field": "if"
+          }
+        }
+      ],
+      "sha256": {
+        "before.yml": "a2732a253a104a15410fd32066cfb3a85f8cfd7a8647e01c3180cb028ede6ab4",
+        "after.yml": "56051601d2995f8f3cd00a1f686e237e1047e113c53fe79540322f5a570d462d"
+      }
+    },
+    {
+      "id": "E11",
+      "grupo": "limite",
+      "alteracao": "Substitui o nome literal do download por variável.",
+      "justificativa_manual": "O valor da variável não foi fornecido. O seletor do download está fora do pareamento por nome literal e deve ser sinalizado na cobertura.",
+      "alertas_antes": [],
+      "alertas_depois": [],
+      "vinculos": [],
+      "cobertura": [
+        {
+          "analise": "artifact_recognition",
+          "status": "partial",
+          "detalhe": "unsupported_selector",
+          "local": {
+            "job": "buscar",
+            "step": 1
+          }
+        }
+      ],
+      "sha256": {
+        "before.yml": "95085e10e362a61e8c0a78a20282c7f49d8003d8260a42bfd377a71f7cabfc3e",
+        "after.yml": "01de566feccefd4081499ae4c354afd6986fd0441320f37a0f17ac34e85d08c7"
+      }
+    },
+    {
+      "id": "E12",
+      "grupo": "limite",
+      "alteracao": "Remove duas arestas consecutivas do único caminho.",
+      "justificativa_manual": "O consumidor fica sem precedência garantida. A explicação completa requer as duas remoções. Restaurar uma única aresta não recompõe o caminho.",
+      "alertas_antes": [],
+      "alertas_depois": [
+        {
+          "regra": "R02_ARTIFACT_ORDER",
+          "local": {
+            "job": "ler",
+            "step": 1
+          },
+          "contexto": null
+        }
+      ],
+      "vinculos": [],
+      "cobertura": [],
+      "sha256": {
+        "before.yml": "ef7f9a1e27455409a494c3812f83b48bb6a1cf90545e250f94fcdc13ce5a73f3",
+        "after.yml": "5a638101e799652be2437392e910638f090eefcd6632f25e528fc729d079f755"
+      }
+    }
+  ]
+}

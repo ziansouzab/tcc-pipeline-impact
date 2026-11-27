@@ -21,7 +21,9 @@
     "title": "Reordenar a lista de needs não muda precedência",
     "plan_rule": "R01",
     "expected": {
-      "change_rules": [],
+      "change_rules": [
+        "UNMODELED_WORKFLOW_CHANGE"
+      ],
       "after_rules": [],
       "absent_warning_rules": [
         "R02_ARTIFACT_ORDER",
@@ -131,7 +133,9 @@
     "title": "Sem mudança de política de falha",
     "plan_rule": "R04",
     "expected": {
-      "change_rules": [],
+      "change_rules": [
+        "UNMODELED_WORKFLOW_CHANGE"
+      ],
       "after_rules": [],
       "absent_warning_rules": [
         "R02_ARTIFACT_ORDER",
@@ -166,7 +170,9 @@
     "title": "Transferência de artefato bloqueia sugestão de remover dependência",
     "plan_rule": "R05",
     "expected": {
-      "change_rules": [],
+      "change_rules": [
+        "UNMODELED_WORKFLOW_CHANGE"
+      ],
       "after_rules": [],
       "absent_warning_rules": [
         "R02_ARTIFACT_ORDER",
@@ -184,7 +190,9 @@
     "title": "Jobs sem needs já estão livres de ordem estrutural; sem economia estimada",
     "plan_rule": "R06",
     "expected": {
-      "change_rules": [],
+      "change_rules": [
+        "UNMODELED_WORKFLOW_CHANGE"
+      ],
       "after_rules": [],
       "absent_warning_rules": [
         "R02_ARTIFACT_ORDER",
@@ -207,7 +215,9 @@
     "title": "Ordem necessária não é paralelismo já existente",
     "plan_rule": "R06",
     "expected": {
-      "change_rules": [],
+      "change_rules": [
+        "UNMODELED_WORKFLOW_CHANGE"
+      ],
       "after_rules": [],
       "absent_warning_rules": [
         "R02_ARTIFACT_ORDER",
