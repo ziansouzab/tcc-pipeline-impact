@@ -6,10 +6,13 @@ A revisão da implementação é [257759e](https://github.com/ziansouzab/tcc-pip
 
 ```sh
 python -m pip install -r requirements-repro.txt
-git archive --format=zip --output=fonte-257759e.zip 257759e60c96fc1c23597d276ab54dfb3d996421 src pyproject.toml requirements-repro.txt
-python evaluation/0.5.0/executar_avaliacao.py fonte-257759e.zip resultados-avaliacao-050
+mkdir -p output
+git archive --format=zip --output=output/fonte-257759e.zip 257759e60c96fc1c23597d276ab54dfb3d996421 src pyproject.toml requirements-repro.txt
+python evaluation/0.5.0/executar_avaliacao.py output/fonte-257759e.zip output/resultados-avaliacao-050
 ```
 
 O script confere o commit contido no arquivo fonte e os hashes das entradas. A pasta de saída deve ser nova. Ela recebe um relatório JSON e um Markdown por par, além de `resultado.json` com os resultados consolidados. O script registra a concordância de cada caso em `conforme_protocolo`.
 
 Os contextos deste protocolo são simulados, inclusive quando a CLI é executada em um runner do GitHub Actions. As execuções do piloto com contexto do evento real são descritas na [documentação da integração](../../docs/PILOTO-AUDITORIA.md).
+
+Em 27/11/2026, a [reexecução no GitHub Actions](https://github.com/ziansouzab/tcc-pipeline-analizer/actions/runs/46019050274) confirmou as expectativas dos 12 pares. O artefato `pipeline-impact-validacao-050` contém os relatórios e o registro consolidado. Consulte também o [registro da avaliação](../../docs/PROTOCOLO-AVALIACAO.md#reexecução-da-versão-050-no-github-actions).

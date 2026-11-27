@@ -1,15 +1,13 @@
 # Catálogo de limitações do protótipo
 
-Atualizado em **14/11/2026**. Contrato de saída **schema 0.6**.
+Revalidado em **27/11/2026** para o Pipeline Impact **0.5.0**, esquema JSON
+**0.6**, após a publicação da
+[revisão 257759e no GitHub](https://github.com/ziansouzab/tcc-pipeline-analizer/tree/257759e60c96fc1c23597d276ab54dfb3d996421).
 
-Este é o registro vivo das restrições identificadas durante a leitura do código.
-Ele reúne limites técnicos, escolhas de escopo e integrações previstas. A
-presença de um item aqui **não significa que ele deva ser corrigido
-agora**: há limites técnicos, escolhas de escopo, integrações futuras e decisões
-explicitamente adiadas.
-
-**Limitação do analisador não é necessariamente problema da pipeline.**
-True, False e None são resultados do modelo; não são observações do runner.
+Os 41 registros, de LIM-001 a LIM-041, foram conferidos com a implementação
+dessa revisão e as verificações relacionadas. Cada item identifica o alcance da
+análise ou da avaliação. Resultados como `True`, `False` e `None` representam
+estados calculados a partir da configuração e do contexto analisado.
 
 ## Como usar este catálogo
 
@@ -29,6 +27,10 @@ Comece por:
 Use `coverage` para consultar o alcance de cada análise, `limitations` para
 ler restrições detectadas e `assumptions` para conhecer as premissas gerais.
 O catálogo inclui também limites que o programa ainda não sinaliza.
+
+As evidências da revisão incluem os [casos de desenvolvimento](../cases),
+a [suíte de testes](../tests), os [12 pares da avaliação 0.5.0](../evaluation/0.5.0)
+e as [execuções da integração do piloto](PILOTO-AUDITORIA.md).
 
 Fontes locais do registro:
 - [model.py](../src/pipeline_impact/model.py): leitura, normalização e grafo.
@@ -100,8 +102,11 @@ pattern faz o seletor ser considerado não suportado.
 Não expandimos padrões para descobrir todos os artefatos selecionados nem
 modelamos todas as opções de agregação da action.
 
-Downloads por `artifact-ids` também ficam fora do modelo. Um download somente
-por ID é registrado como seletor fora do escopo porque falta o nome literal.
+A ferramenta deixa os identificadores de `artifact-ids` sem interpretação.
+Um download somente por ID recebe a indicação de seletor fora do escopo por
+falta de nome literal. Se houver também um `name` literal válido, o modelo
+usa esse nome e ignora os IDs, o que pode produzir uma relação diferente da
+seleção efetiva.
 [Opções da action de download](https://github.com/actions/download-artifact#inputs).
 
 **Impacto:** uma relação que usa um padrão de nomes não é representada como várias
@@ -157,8 +162,10 @@ conteúdo pretendido nem que todos os uploads da execução serão aceitos.
 
 **Tipo:** normalização com perda de detalhe.
 
-O texto depois de @ é descartado para reconhecer o nome da action. Não validamos
-se a versão ou revisão existe, nem suas diferenças de comportamento.
+O texto depois de `@` é descartado no reconhecimento de transferências.
+Na comparação de etapas correspondentes, o relatório pode mostrar que a
+referência literal da action mudou. A existência da revisão e seus efeitos
+sobre a transferência ficam fora dessa verificação.
 
 Também não validamos todos os parâmetros aceitos por cada versão.
 
@@ -245,14 +252,18 @@ O interpretador aceita texto, booleano e `None`. O arquivo passado em
 ou `null` nos campos opcionais. O interpretador preserva os tipos durante a
 comparação.
 
-Um identificador ausente gera UnsupportedCondition. Um identificador presente
-com None pode propagar indeterminação em operações lógicas, mas comparações com
-None também são rejeitadas.
+Quando calcula o estado de jobs e etapas, o analisador distingue dados de
+evento ausentes, valores disponíveis somente em execução e propriedades
+fora do contexto analisado. Esses casos são registrados como
+`missing_event_data`, `runtime_value` ou `unsupported_context` e deixam o
+estado indeterminado. Operações sobre tipos fora do subconjunto e expressões
+incompatíveis são registradas como `unsupported_expression`.
 
 **Impacto:** não existe raciocínio simbólico geral. Ausência e indeterminação
 explícita não percorrem necessariamente o mesmo caminho.
 
-**Referência:** conditions.py, atom(), comparison() e tratamento em states().
+**Referência:** conditions.py, `unknown_reference()`, `comparison()` e
+`state_from_condition()`, e event_context.py, `load_contexts()`.
 
 ### LIM-013 — Cobertura restrita aos contextos informados
 
@@ -362,17 +373,17 @@ comportamento real do GitHub Actions.
 
 **Tipo:** restrição do interpretador atual.
 
-A direita de && e || é interpretada antes de tri_and()/tri_or() combinar os
-resultados. Portanto, true || inputs.publish gera exceção se inputs.publish
-estiver ausente, apesar do true à esquerda.
-
-Se o identificador estiver presente com None, tri_or(True, None) pode produzir
-True. A lógica de três valores não elimina a restrição da leitura da direita.
+O interpretador lê o lado direito dos operadores lógicos antes de combinar
+os valores. Mesmo quando a combinação de valores poderia resultar em
+`True` ou `False`, o cálculo do estado registra as referências indisponíveis
+encontradas e mantém o estado indeterminado. Por exemplo, `true || inputs.publish`
+depende da disponibilidade de `inputs.publish` no modelo de estado atual.
 
 **Impacto:** algumas expressões que poderiam ter um resultado conhecido ficam
 indeterminadas pela falta de informação em outra parte.
 
-**Referência:** conditions.py, conjunction() e disjunction().
+**Referência:** conditions.py, `conjunction()`, `disjunction()` e
+`state_from_condition()`.
 
 ## 3. Estruturas do workflow e grafos
 
@@ -465,9 +476,9 @@ ela não constitui uma validação completa do formato de workflows.
 
 Uma configuração inválida para o GitHub pode passar pela leitura. Por exemplo,
 um job comum com `steps: []` e sem `runs-on` passa por essas validações.
-Pela leitura de `compare()`, uma chave numérica entre campos extras de um job
-pode chegar à ordenação junto de uma chave textual como `runs-on`. A ordenação
-pode levantar `TypeError` fora do tratamento de erros da CLI.
+Na comparação, as chaves de campos extras são ordenadas com `key=str` e
+registradas como texto. Isso permite descrever campos de chaves textuais e
+numéricas sem depender da ordenação direta entre tipos diferentes.
 
 **Impacto:** ser aceito pelo nosso parser não certifica validade completa no
 GitHub. Rejeitar algo fora do suporte também não prova que o GitHub o rejeitaria.
@@ -564,7 +575,7 @@ dependências gerais entre steps, como uma referência a `steps.setup.outputs`.
 
 **Tipo:** decisão de escopo, não defeito a corrigir automaticamente.
 
-O schema 0.5 apresenta os achados por configuração. A seção de impactos
+O schema 0.6 apresenta os achados por configuração. A seção de impactos
 explicados indica vínculos específicos com uma alteração. A classificação
 geral de achados como novos, preexistentes ou resolvidos permanece adiada.
 
@@ -670,15 +681,14 @@ caminhos dos YAMLs.
 
 **Referência:** cli.py, main(); model.py, load(); scripts/audit_pull_request.py.
 
-### LIM-036 — Histórico e métricas reais não coletados
+### LIM-036 — Histórico de execução fora da análise
 
 **Tipo:** integração e avaliação pendentes.
 
-Não coletamos execuções, tentativas, durações e seus vínculos com revisões do
-workflow. Não calculamos ganho temporal observado ou estimado.
-
-Uma coleta futura precisará associar os dados às configurações corretas e não
-garantirá reconstruir todos os valores usados na execução.
+O analisador usa arquivos de configuração e contextos de evento. Ele não
+consulta históricos de execução, tentativas ou durações para calcular os
+diagnósticos. Os registros do piloto no GitHub Actions são evidências do teste
+de integração e permanecem externos a esse modelo.
 
 **Impacto:** os resultados atuais não demonstram redução real de duração nem
 representam o comportamento histórico de um repositório.
@@ -727,20 +737,23 @@ pipeline.
 
 **Referência:** cli.py, main(); LIM-002, LIM-025 e LIM-033.
 
-### LIM-039 — Validade e eficácia científica ainda não medidas
+### LIM-039 — Alcance da avaliação
 
 **Tipo:** avaliação pendente.
 
-Os testes locais e os 12 pares sintéticos verificam comportamentos da
-implementação. Não substituem uma amostra independente do TCC, a reprodução em
-runners reais nem uma comparação experimental executada com outras ferramentas.
+A suíte verifica comportamentos da implementação. Os 12 pares sintéticos
+permitem conferir os alertas R02, R03 e R06, os vínculos e a cobertura
+esperados pelo protocolo. O piloto usa PRs de laboratório para verificar
+acionamento, seleção de arquivos, contexto, diagnóstico e publicação de
+relatórios.
 
-**Impacto:** ainda não demonstramos precisão geral, cobertura em repositórios
-reais, melhoria de duração, superioridade ou segurança das sugestões.
-É necessário medir o que reconhecemos e a correção do que concluímos.
+**Impacto:** as conclusões se referem a esses cenários. Precisão e
+cobertura em repositórios reais, comparação experimental com ferramentas
+externas, ganhos de duração e correção das sugestões de paralelismo
+permanecem sem estimativas neste protocolo.
 
-**Referência:** tests, cases, registro local de verificação gerado por
-scripts/verify.py e próximos passos.
+**Referência:** [suíte](../tests), [casos da avaliação 0.5.0](../evaluation/0.5.0)
+e [piloto](PILOTO-AUDITORIA.md).
 
 ### LIM-040 — Custo das buscas em grafos não estudado
 
@@ -784,39 +797,6 @@ fora do modelo.
 **Referência** `snapshot()` e `compare()` em `analyzer.py`.
 [Contexto needs no GitHub Actions](https://docs.github.com/en/actions/reference/workflows-and-actions/contexts#needs-context).
 
-## 6. Decisões e correções que não devem voltar como pendências
-
-- **Consulta genérica já implementada.** O interpretador consulta os valores do
-  contexto fornecido, com escopo de coleta delimitado pela LIM-014.
-- **Classificação histórica removida:** o antigo caso de deslocar um step e
-  classificá-lo falsamente como novo/resolvido não é um comportamento atual.
-  Hoje o acompanhamento foi adiado, conforme LIM-030.
-- **Opção atual da CLI:** --fail-on-warning. A opção antiga para apenas novos
-  warnings não faz mais parte do contrato.
-- **Análise estática:** não executar os comandos é uma escolha. Este catálogo não
-  transforma isso em obrigação de implementar um executor.
-- **Não usar IA:** o interpretador determinístico é a abordagem atual, não uma
-  deficiência.
-- **None:** preservar indeterminação é intencional, não um erro a eliminar.
-- **condition():** apenas normaliza o if; a avaliação pertence a evaluate().
-- **job_states:** é memória interna de states(); não ser retornado é intencional.
-
-## 7. Regra de atualização daqui para frente
-
-1. Ao identificar uma nova limitação durante a leitura, procurar primeiro se ela
-   já está representada neste catálogo.
-2. Atualizar o item existente ou acrescentar o próximo identificador, sem
-   renumerar os anteriores. O próximo disponível é LIM-042.
-3. Registrar o que não é feito, um exemplo ou consequência, a função relacionada
-   e se o programa sinaliza a restrição automaticamente.
-4. Distinguir falta de conhecimento, recurso não implementado, aproximação,
-   requisito futuro e escolha de escopo.
-5. Se houver correção, atualizar o estado e registrar a data e a evidência, sem
-   manter uma restrição resolvida como se ainda estivesse ativa.
-6. Documentar não significa implementar uma solução nem assumir compromisso de
-   ampliar o escopo.
-7. Manter a data da revisão clara na cópia portátil. O Markdown deste catálogo
-   é a fonte de referência; o PDF é sua cópia para leitura.
 
 **Registro inicial:** 27/10/2026, com base na leitura de cli.py, model.py,
 conditions.py e da parte atual de analyzer.py, além das restrições já discutidas.

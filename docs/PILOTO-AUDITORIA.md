@@ -1,5 +1,25 @@
 # Piloto de análise de PRs no GitHub Actions
 
+## Validação da versão 0.5.0
+
+Em 27/11/2026, a revisão `257759e` foi usada como base do
+[PR de validação](https://github.com/ziansouzab/tcc-pipeline-analizer/pull/3).
+O piloto acionou a análise a partir do evento real do PR. Os relatórios
+registram a versão 0.5.0 e o esquema 0.6.
+
+| Cenário | Resultado observado | Execução |
+|---|---|---|
+| Controle sem alteração de workflow | A análise foi dispensada e a CI do laboratório concluiu com sucesso. | [Controle](https://github.com/ziansouzab/tcc-pipeline-analizer/actions/runs/46017738528) |
+| Workflow modificado com perda de precedência | A integração comparou o ancestral comum e a revisão do PR. O relatório trouxe um R02 em `verify`, etapa 2, e um vínculo `artifact_order_lost`. | [Comparação](https://github.com/ziansouzab/tcc-pipeline-analizer/actions/runs/46018054154) |
+| Workflow adicionado com contexto real | A integração o auditou com evento `pull_request` e branch de destino `main`. O contexto ficou elegível e o relatório registrou os estados `[true, false]` para as duas etapas do job `checks`. A execução disponibilizou relatórios para os três YAMLs selecionados. | [Auditoria e contexto](https://github.com/ziansouzab/tcc-pipeline-analizer/actions/runs/46018054154) |
+| Restauração da dependência | O nome alterado manteve o workflow no diff. A comparação apresentou uma alteração, zero alertas e zero vínculos. | [Restauração](https://github.com/ziansouzab/tcc-pipeline-analizer/actions/runs/46019050282) |
+| Renomeação | A integração registrou a exclusão de `caso-03-lab.yml`, auditou `caso-03-renomeado-lab.yml` como arquivo novo e disponibilizou os relatórios dos YAMLs selecionados. | [Renomeação](https://github.com/ziansouzab/tcc-pipeline-analizer/actions/runs/46019438625) |
+
+Os artefatos `pipeline-audit-reports` contêm JSON e Markdown por arquivo.
+A [reexecução do protocolo](PROTOCOLO-AVALIACAO.md#reexecução-da-versão-050-no-github-actions)
+usou os dois contextos simulados do TCC no runner, além das verificações
+do piloto com o evento real.
+
 ## Conferência local
 
 Execute os comandos no PowerShell, na raiz do repositório, com a instalação do

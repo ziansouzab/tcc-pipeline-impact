@@ -23,13 +23,35 @@ identifica e se a explicação liga a alteração ao alerta por meio de evidênc
    o ancestral comum, o `head` e os relatórios. Qualquer execução do workflow
    analisado para observar o impacto deve ser registrada separadamente.
 
-Para conferir a implementação, use os casos 03 (R02), 05 (R03) e LIM-041
-(R06) do [roteiro do piloto](PILOTO-AUDITORIA.md#conferência-local). Inclua
-controles de precedência transitiva preservada, alerta preexistente,
-condição indeterminada e steps com correspondência ambígua. Para a avaliação
-do TCC, monte uma amostra com expectativas próprias, cobrindo impactos
-verificáveis, mudanças legítimas e situações fora do subconjunto. Os casos
-de desenvolvimento servem como verificação da implementação.
+Os [casos de desenvolvimento](../cases) servem à verificação da
+implementação. O [protocolo da versão 0.5.0](../evaluation/0.5.0) reúne
+os 12 pares sintéticos usados na avaliação do TCC, com os hashes dos
+YAMLs, dois contextos simulados e as expectativas definidas antes da
+execução. O [piloto no GitHub Actions](PILOTO-AUDITORIA.md#validação-da-versão-050)
+documenta a integração com eventos reais de pull request.
+
+## Reexecução da versão 0.5.0 no GitHub Actions
+
+Em 27/11/2026, o protocolo foi executado em um runner Ubuntu 24.04 com
+a revisão `257759e`, esquema 0.6 e PyYAML 6.0.3. Os 12 pares
+corresponderam às expectativas. Foram observados sete novos alertas,
+um alerta preexistente, seis vínculos e dois casos de cobertura parcial.
+No E12, a comparação detectou a perda de precedência e deixou o alerta
+sem vínculo individual, conforme o protocolo. A suíte de implementação
+concluiu 156 testes com sucesso.
+
+[Execução e relatórios da reavaliação](https://github.com/ziansouzab/tcc-pipeline-analizer/actions/runs/46019050274).
+Uma [execução posterior](https://github.com/ziansouzab/tcc-pipeline-analizer/actions/runs/46019438562)
+repetiu a suíte e o protocolo com os mesmos resultados.
+
+A [primeira tentativa da suíte](https://github.com/ziansouzab/tcc-pipeline-analizer/actions/runs/46018054095)
+revelou dois problemas de preparação. Os subprocessos dos testes de
+integração mudavam de diretório e perdiam o caminho relativo do pacote.
+Cinco casos de desenvolvimento também esperavam zero mudanças, apesar
+de os arquivos diferirem no nome do workflow. Na reexecução, o runner usou
+um caminho absoluto para o pacote e esses casos passaram a conferir
+exatamente uma alteração do campo `name`. O código do analisador e as
+expectativas dos 12 pares do protocolo permaneceram na revisão avaliada.
 
 ## Procedimento preliminar da versão 0.2.0
 
